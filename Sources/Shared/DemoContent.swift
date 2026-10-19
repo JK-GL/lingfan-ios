@@ -83,6 +83,84 @@ enum DemoContent {
     }
     #endif
 
+    // MARK: - 投屏演示帧
+
+    /// 按相位画一帧「车机界面」，用于投屏演示。
+    /// phase 递增时画面里的速度指针与进度条会动，看起来像在跑。
+    static func makeMirrorFrame(phase: Double) -> PlatformImage? {
+        let size = CGSize(width: 640, height: 360)
+
+        #if canImport(UIKit)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            drawMirrorFrame(in: ctx.cgContext, size: size, phase: phase)
+        }
+        #elseif canImport(AppKit)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        if let cg = NSGraphicsContext.current?.cgContext {
+            drawMirrorFrame(in: cg, size: size, phase: phase)
+        }
+        img.unlockFocus()
+        return img
+        #else
+        return nil
+        #endif
+    }
+
+    #if canImport(UIKit) || canImport(AppKit)
+    private static func drawMirrorFrame(in cg: CGContext, size: CGSize, phase: Double) {
+        cg.setFillColor(CGColor(red: 0.04, green: 0.06, blue: 0.09, alpha: 1))
+        cg.fill(CGRect(origin: .zero, size: size))
+
+        // 左侧导航条
+        cg.setFillColor(CGColor(red: 0.09, green: 0.12, blue: 0.17, alpha: 1))
+        cg.fill(CGRect(x: 0, y: 0, width: 92, height: size.height))
+
+        // 中上方速度表盘
+        let cx = size.width * 0.36
+        let cy = size.height * 0.52
+        cg.setStrokeColor(CGColor(red: 0.18, green: 0.24, blue: 0.33, alpha: 1))
+        cg.setLineWidth(9)
+        cg.addArc(center: CGPoint(x: cx, y: cy), radius: 68,
+                  startAngle: .pi * 0.78, endAngle: .pi * 2.22, clockwise: false)
+        cg.strokePath()
+
+        // 速度指针
+        let speed = 0.35 + 0.28 * sin(phase)
+        let angle = Double.pi * 0.78 + (Double.pi * 1.44) * speed
+        cg.setStrokeColor(CGColor(red: 0.29, green: 0.50, blue: 0.91, alpha: 1))
+        cg.setLineWidth(4)
+        cg.setLineCap(.round)
+        cg.move(to: CGPoint(x: cx, y: cy))
+        cg.addLine(to: CGPoint(x: cx + cos(angle) * 52, y: cy + sin(angle) * 52))
+        cg.strokePath()
+
+        // 右侧信息块
+        for i in 0..<3 {
+            let y = 58 + CGFloat(i) * 74
+            cg.setFillColor(CGColor(red: 0.10, green: 0.14, blue: 0.20, alpha: 1))
+            cg.addPath(CGPath(roundedRect: CGRect(x: size.width * 0.63, y: y, width: 190, height: 58),
+                              cornerWidth: 12, cornerHeight: 12, transform: nil))
+            cg.fillPath()
+
+            // 内容条，随相位微微收缩，制造动态感
+            let w = 150.0 * (0.72 + 0.16 * sin(phase + Double(i)))
+            cg.setFillColor(CGColor(red: 0.32, green: 0.38, blue: 0.47, alpha: 0.8))
+            cg.fill(CGRect(x: size.width * 0.63 + 14, y: y + 22, width: CGFloat(w), height: 7))
+        }
+
+        // 底部条
+        cg.setFillColor(CGColor(red: 0.09, green: 0.12, blue: 0.17, alpha: 1))
+        cg.fill(CGRect(x: 92, y: size.height - 46, width: size.width - 92, height: 46))
+
+        // 时间指示点，随时间前进
+        let dotX = 108 + CGFloat(fmod(phase * 40, Double(size.width - 140)))
+        cg.setFillColor(CGColor(red: 0.29, green: 0.50, blue: 0.91, alpha: 1))
+        cg.fillEllipse(in: CGRect(x: dotX, y: size.height - 30, width: 10, height: 10))
+    }
+    #endif
+
     // MARK: - 日志
 
     static func makeLog() -> String {

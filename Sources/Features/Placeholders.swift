@@ -198,48 +198,6 @@ struct ShellView: View {
     }
 }
 
-// MARK: - 其余占位页
-
-struct FilesView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "文件管理", icon: "folder.fill",
-                        tint: MDColor.file, note: "浏览 / 上传 / 下载 / 重命名远程文件")
-    }
-}
-
-struct AppsView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "App管理", icon: "square.grid.3x3.fill",
-                        tint: MDColor.app, note: "安装 / 卸载 / 提取 APK / 冻结")
-    }
-}
-
-struct MirrorView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "设备投屏", icon: "airplayvideo",
-                        tint: MDColor.info, note: "scrcpy 协议 + VideoToolbox 硬解")
-    }
-}
-
-struct LinkView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "菱粉联动", icon: "car.fill",
-                        tint: MDColor.brand, note: "语音 / 图标 / 天气 / 日志定制")
-    }
-}
-
-struct CleanupView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "存储清理", icon: "trash.fill",
-                        tint: MDColor.process, note: "扫描并清理设备冗余文件")
-    }
-}
-
 /// 统一的占位页
 struct PlaceholderPage: View {
     let title: String
