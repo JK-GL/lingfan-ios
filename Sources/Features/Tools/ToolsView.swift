@@ -29,6 +29,17 @@ struct ToolsView: View {
                     logCard
                     powerCard
 
+                    if let busy = store.busyMessage {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.8)
+                            Text(busy)
+                                .font(.system(size: 12))
+                                .foregroundStyle(MDColor.textSecondary)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
                     if let msg = store.lastMessage {
                         Text(msg)
                             .font(.system(size: 12))

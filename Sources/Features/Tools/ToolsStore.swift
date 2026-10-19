@@ -23,6 +23,8 @@ final class ToolsStore: ObservableObject {
 
     @Published private(set) var running = false
     @Published private(set) var lastMessage: String?
+    /// 长耗时操作的进度提示（录屏、取回等），界面据此显示转圈
+    @Published private(set) var busyMessage: String?
     /// 截图结果，可直接放进 Image(uiImage:)
     @Published var screenshot: PlatformImage?
     @Published private(set) var logText: String = ""
