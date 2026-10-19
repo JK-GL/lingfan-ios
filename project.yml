@@ -22,12 +22,7 @@ targets:
 
     sources:
       - path: Sources
-      - path: Vendor/lib
-        buildPhase: none
-      - path: Vendor/include
-        buildPhase: none
       - path: Resources
-        buildPhase: resources
 
     settings:
       base:
