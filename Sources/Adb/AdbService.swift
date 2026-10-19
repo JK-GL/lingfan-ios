@@ -3,14 +3,13 @@ import Combine
 
 /// ADB 命令执行的 Swift 封装
 ///
-/// 底层是 AdbBridge（ObjC++），它直接调用 libadb 的 C 接口。
-/// 所有操作都放到后台队列执行，避免阻塞主线程。
-@MainActor
+/// 底层 AdbBridge（ObjC++）直接调用 libadb 的 C 接口。
+/// 这里不标记 @MainActor：真机上 adb shell 是阻塞调用，
+/// 整个类被主线程隔离会让 UI 卡死。所有结果统一用 DispatchQueue.main 回调。
 final class AdbService: ObservableObject {
 
     static let shared = AdbService()
 
-    private let bridge = AdbBridge.shared
     private let queue = DispatchQueue(label: "com.lingfan.adb", qos: .userInitiated)
 
     /// 当前已连接的设备 endpoint（ip:port）
@@ -20,21 +19,28 @@ final class AdbService: ObservableObject {
     @Published private(set) var lastError: String?
 
     private init() {
-        bridge.initializeRuntimeIfNeeded()
+        AdbBridge.shared.initializeRuntimeIfNeeded()
     }
 
     // MARK: - 基础执行
 
-    /// 同步执行（内部已串行化，可在后台队列反复调用）
+    /// 同步执行（串行队列上调用，不要在主线程序列化等待）
     nonisolated func run(_ args: [String]) -> AdbResult {
         AdbBridge.shared.runCommand(args)
     }
 
-    /// 异步执行，回调在主线程
+    /// 异步执行，回调保证在主线程
     func runAsync(_ args: [String], completion: @escaping (AdbResult) -> Void) {
         queue.async {
             let result = AdbBridge.shared.runCommand(args)
             DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// 仅返回输出文本
+    func runText(_ args: [String], completion: @escaping (String) -> Void) {
+        runAsync(args) { result in
+            completion(result.output)
         }
     }
 
@@ -43,33 +49,29 @@ final class AdbService: ObservableObject {
     /// 连接设备。endpoint 形如 "192.168.43.1:5557"
     func connect(to endpoint: String, completion: @escaping (Bool, String) -> Void) {
         runAsync(["connect", endpoint]) { [weak self] result in
-            guard let self else { return }
             let text = result.output
-            // adb connect 成功时返回 "connected to ..." / "already connected to ..."
-            // 但返回码不一定为 0，所以以文本判定
+            // adb connect 成功返回 "connected to ..." 或 "already connected to ..."，
+            // 返回码不一定是 0，所以按文本判定
             let ok = text.contains("connected to") && !text.contains("failed")
             if ok {
-                self.connectedEndpoint = endpoint
-                self.lastError = nil
+                self?.connectedEndpoint = endpoint
+                self?.lastError = nil
             } else {
-                self.lastError = text.isEmpty ? "连接失败" : text
+                self?.lastError = text.isEmpty ? "连接失败" : text
             }
             completion(ok, text)
         }
     }
 
-    /// 断开指定设备
     func disconnect(_ endpoint: String, completion: ((Bool) -> Void)? = nil) {
         runAsync(["disconnect", endpoint]) { [weak self] result in
-            guard let self else { return }
-            if self.connectedEndpoint == endpoint {
-                self.connectedEndpoint = nil
+            if self?.connectedEndpoint == endpoint {
+                self?.connectedEndpoint = nil
             }
             completion?(result.success)
         }
     }
 
-    /// 断开全部
     func disconnectAll(completion: ((Bool) -> Void)? = nil) {
         runAsync(["disconnect"]) { [weak self] result in
             self?.connectedEndpoint = nil
@@ -77,16 +79,16 @@ final class AdbService: ObservableObject {
         }
     }
 
-    /// 列出已连接设备
+    /// 列出已连接设备 serial
     func listDevices(completion: @escaping ([String]) -> Void) {
         runAsync(["devices"]) { result in
             var serials: [String] = []
             for line in result.output.split(separator: "\n") {
                 let text = line.trimmingCharacters(in: .whitespaces)
-                guard text.hasPrefix("List of devices") == false, !text.isEmpty else { continue }
+                guard !text.isEmpty, !text.hasPrefix("List of devices") else { continue }
                 let parts = text.split(separator: "\t")
-                if parts.count >= 2 {
-                    serials.append(String(parts[0]))
+                if let first = parts.first {
+                    serials.append(String(first))
                 }
             }
             completion(serials)
@@ -99,14 +101,13 @@ final class AdbService: ObservableObject {
     func pair(address: String, code: String, completion: @escaping (Bool, String) -> Void) {
         runAsync(["pair", address, code]) { result in
             let text = result.output
-            let ok = text.contains("Successfully paired") || text.contains("success")
+            let ok = text.contains("Successfully paired") || text.lowercased().contains("success")
             completion(ok, text)
         }
     }
 
     // MARK: - Shell
 
-    /// 执行 shell 命令（有界，防止 dumpsys 之类输出爆内存）
     func shell(_ command: String, timeout: TimeInterval = 30,
                completion: @escaping (Bool, String) -> Void) {
         runAsync(["shell", command]) { result in
@@ -118,42 +119,18 @@ final class AdbService: ObservableObject {
     func shellLines(_ command: String, completion: @escaping ([String]) -> Void) {
         runAsync(["shell", command]) { result in
             let lines = result.output
-                .split(separator: "\n")
+                .split(separator: "\n", omittingEmptySubsequences: false)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
             completion(lines)
         }
     }
 
-    // MARK: - 便捷读取设备信息
+    // MARK: - 设备属性
 
-    /// 读取单个 prop
     func getProp(_ key: String, completion: @escaping (String) -> Void) {
         shellLines("getprop \(key)") { lines in
             completion(lines.first ?? "")
-        }
-    }
-
-    /// 一次读取多个常用 prop，减少往返
-    func getProps(_ keys: [String], completion: @escaping ([String: String]) -> Void) {
-        // getprop 支持无参列出全部，但输出很大。
-        // 这里按 key 逐个读，数量少时可接受；后续可改为一次性 dump 再解析。
-        var result: [String: String] = [:]
-        let group = DispatchGroup()
-        let lock = NSLock()
-
-        for key in keys {
-            group.enter()
-            shellLines("getprop \(key)") { lines in
-                lock.lock()
-                result[key] = lines.first ?? ""
-                lock.unlock()
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) {
-            completion(result)
         }
     }
 }
