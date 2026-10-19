@@ -7,37 +7,37 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
-			0721A0DB65B72E6A789C38AF /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9553F76623DB2504A232B6C9 /* HomeView.swift */; };
-			2E7E1CB55A395119C2EBD5D2 /* HomeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977DADA3217E59FF240D32C3 /* HomeStore.swift */; };
-			4A9655906566070A7C19E5C1 /* DeviceRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DF2B33B36D15C04704ED38 /* DeviceRecord.swift */; };
-			59B33AEDA8F484585E425AD9 /* ConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11966CBCE1DFC0DE198891D3 /* ConsoleView.swift */; };
-			72C90828D414258750F71A3A /* MDColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE2543EC253121F7922026F /* MDColor.swift */; };
-			805CA261F573E5F5B0A6200F /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ABE6451285D1162355BAE0B /* ConsoleStore.swift */; };
-			A71C09389300D858AE30271F /* LingFanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97CAF9E0274C2ED11D425FB /* LingFanApp.swift */; };
-			A8A5C656255B824C7E12008F /* AdbService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A9F3CF8F44D5C17792BDDC /* AdbService.swift */; };
-			B8D01C5246C9DEC29F41FF41 /* MDComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768CF78092C9A01D94D55AD3 /* MDComponents.swift */; };
-			C3131CE8E1818B2945960D98 /* Placeholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80833CB9E675554816A9E4D /* Placeholders.swift */; };
-			F76525F8F07211519D03D22D /* AdbBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 42894F24FC3B24234AA5BFA4 /* AdbBridge.mm */; };
+			E9879477F47B68A852A4C917 /* AdbBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */; };
+			1CEDCB3EDBA9BA95B09A7333 /* AdbService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */; };
+			094C39CF6539BBA7978B0597 /* LingFanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */; };
+			4ECA02CA5B11503D51942EE8 /* MDColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD3E629F87518AEE2E1DCD26 /* MDColor.swift */; };
+			A3334A50BD913EEBF369FFD4 /* MDComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C755AEB6A4B21839E9969A7 /* MDComponents.swift */; };
+			D0801B6B84AF1E2FEFE2986E /* ConsoleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99EA70593F909E9E74922593 /* ConsoleStore.swift */; };
+			AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */; };
+			CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE604C386D80D212077D38B4 /* HomeStore.swift */; };
+			643A716EA36A3D01B4521462 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 785CE226E5716EF40F6F1D36 /* HomeView.swift */; };
+			BACC0992D5E0C96A11CC89A4 /* Placeholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36664063489A20543FE4632E /* Placeholders.swift */; };
+			FA7DF9CA817BDAE7242CC189 /* DeviceRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE1A2A656AC57BDB7A23DA0 /* DeviceRecord.swift */; };
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
-			D91517BFBDECE389497A425B /* LingFan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LingFan.app; sourceTree = BUILT_PRODUCTS_DIR; };
-			F1BE424920413CF9C916F1D8 /* AdbBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdbBridge.h; sourceTree = "<group>"; };
-			42894F24FC3B24234AA5BFA4 /* AdbBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AdbBridge.mm; sourceTree = "<group>"; };
-			65A9F3CF8F44D5C17792BDDC /* AdbService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdbService.swift; sourceTree = "<group>"; };
-			B97CAF9E0274C2ED11D425FB /* LingFanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LingFanApp.swift; sourceTree = "<group>"; };
-			0BE2543EC253121F7922026F /* MDColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDColor.swift; sourceTree = "<group>"; };
-			768CF78092C9A01D94D55AD3 /* MDComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDComponents.swift; sourceTree = "<group>"; };
-			7ABE6451285D1162355BAE0B /* ConsoleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleStore.swift; sourceTree = "<group>"; };
-			11966CBCE1DFC0DE198891D3 /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleView.swift; sourceTree = "<group>"; };
-			977DADA3217E59FF240D32C3 /* HomeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeStore.swift; sourceTree = "<group>"; };
-			9553F76623DB2504A232B6C9 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
-			B80833CB9E675554816A9E4D /* Placeholders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Placeholders.swift; sourceTree = "<group>"; };
-			34DF2B33B36D15C04704ED38 /* DeviceRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceRecord.swift; sourceTree = "<group>"; };
+			DF56A81F6C35A89FD50C8B5E /* LingFan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LingFan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+			0DB48147E5CB5E763AD6703E /* AdbBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AdbBridge.h; path = Sources/Adb/AdbBridge.h; sourceTree = "<group>"; };
+			34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = AdbBridge.mm; path = Sources/Adb/AdbBridge.mm; sourceTree = "<group>"; };
+			BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdbService.swift; path = Sources/Adb/AdbService.swift; sourceTree = "<group>"; };
+			C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFanApp.swift; path = Sources/App/LingFanApp.swift; sourceTree = "<group>"; };
+			CD3E629F87518AEE2E1DCD26 /* MDColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MDColor.swift; path = Sources/DesignSystem/MDColor.swift; sourceTree = "<group>"; };
+			1C755AEB6A4B21839E9969A7 /* MDComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MDComponents.swift; path = Sources/DesignSystem/MDComponents.swift; sourceTree = "<group>"; };
+			99EA70593F909E9E74922593 /* ConsoleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsoleStore.swift; path = Sources/Features/Console/ConsoleStore.swift; sourceTree = "<group>"; };
+			14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsoleView.swift; path = Sources/Features/Console/ConsoleView.swift; sourceTree = "<group>"; };
+			EE604C386D80D212077D38B4 /* HomeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeStore.swift; path = Sources/Features/Home/HomeStore.swift; sourceTree = "<group>"; };
+			785CE226E5716EF40F6F1D36 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Sources/Features/Home/HomeView.swift; sourceTree = "<group>"; };
+			36664063489A20543FE4632E /* Placeholders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Placeholders.swift; path = Sources/Features/Placeholders.swift; sourceTree = "<group>"; };
+			5FE1A2A656AC57BDB7A23DA0 /* DeviceRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeviceRecord.swift; path = Sources/Models/DeviceRecord.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 		/* Begin PBXFrameworksBuildPhase section */
-			059DB2086B49B680F85B3555 /* Frameworks */ = {
+			F52F4BA3F158C58891B93D5F /* Frameworks */ = {
 				isa = PBXFrameworksBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
@@ -50,89 +50,26 @@
 			2B731CEFC6751AAE0EC69B98 = {
 				isa = PBXGroup;
 				children = (
-					D8DBA3F9900DD17689CA0C4D /* Sources */,
-					0A2C978E52A76F0AA9F68BB5 /* Products */,
+					0DB48147E5CB5E763AD6703E /* AdbBridge.h */,
+					34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */,
+					BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */,
+					C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */,
+					CD3E629F87518AEE2E1DCD26 /* MDColor.swift */,
+					1C755AEB6A4B21839E9969A7 /* MDComponents.swift */,
+					99EA70593F909E9E74922593 /* ConsoleStore.swift */,
+					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
+					EE604C386D80D212077D38B4 /* HomeStore.swift */,
+					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					36664063489A20543FE4632E /* Placeholders.swift */,
+					5FE1A2A656AC57BDB7A23DA0 /* DeviceRecord.swift */,
+					86024CAD1E83101D97359D73 /* Products */,
 				);
 				sourceTree = "<group>";
 			};
-			D8DBA3F9900DD17689CA0C4D /* Sources */ = {
+			86024CAD1E83101D97359D73 /* Products */ = {
 				isa = PBXGroup;
 				children = (
-					DD295A906C4EFEFCDC11EFF2 /* Adb */,
-					A24A4D6F0745A42F18DEB5EE /* App */,
-					7988D5678150AFBF62942B93 /* DesignSystem */,
-					762227FD596691B77FDCF45E /* Features */,
-					DA06836122790A2DF0BF5B97 /* Models */,
-				);
-				name = Sources;
-				path = Sources;
-				sourceTree = "<group>";
-			};
-			DD295A906C4EFEFCDC11EFF2 /* Adb */ = {
-				isa = PBXGroup;
-				children = (
-					F1BE424920413CF9C916F1D8 /* AdbBridge.h */,
-					42894F24FC3B24234AA5BFA4 /* AdbBridge.mm */,
-					65A9F3CF8F44D5C17792BDDC /* AdbService.swift */,
-				);
-				path = Adb;
-				sourceTree = "<group>";
-			};
-			A24A4D6F0745A42F18DEB5EE /* App */ = {
-				isa = PBXGroup;
-				children = (
-					B97CAF9E0274C2ED11D425FB /* LingFanApp.swift */,
-				);
-				path = App;
-				sourceTree = "<group>";
-			};
-			7988D5678150AFBF62942B93 /* DesignSystem */ = {
-				isa = PBXGroup;
-				children = (
-					0BE2543EC253121F7922026F /* MDColor.swift */,
-					768CF78092C9A01D94D55AD3 /* MDComponents.swift */,
-				);
-				path = DesignSystem;
-				sourceTree = "<group>";
-			};
-			762227FD596691B77FDCF45E /* Features */ = {
-				isa = PBXGroup;
-				children = (
-					B80833CB9E675554816A9E4D /* Placeholders.swift */,
-				);
-				path = Features;
-				sourceTree = "<group>";
-			};
-			0A60C5EE30260CA5F052E521 /* Console */ = {
-				isa = PBXGroup;
-				children = (
-					7ABE6451285D1162355BAE0B /* ConsoleStore.swift */,
-					11966CBCE1DFC0DE198891D3 /* ConsoleView.swift */,
-				);
-				path = Console;
-				sourceTree = "<group>";
-			};
-			150B00D8C80FFB7626230934 /* Home */ = {
-				isa = PBXGroup;
-				children = (
-					977DADA3217E59FF240D32C3 /* HomeStore.swift */,
-					9553F76623DB2504A232B6C9 /* HomeView.swift */,
-				);
-				path = Home;
-				sourceTree = "<group>";
-			};
-			DA06836122790A2DF0BF5B97 /* Models */ = {
-				isa = PBXGroup;
-				children = (
-					34DF2B33B36D15C04704ED38 /* DeviceRecord.swift */,
-				);
-				path = Models;
-				sourceTree = "<group>";
-			};
-			0A2C978E52A76F0AA9F68BB5 /* Products */ = {
-				isa = PBXGroup;
-				children = (
-					D91517BFBDECE389497A425B /* LingFan.app */,
+					DF56A81F6C35A89FD50C8B5E /* LingFan.app */,
 				);
 				name = Products;
 				sourceTree = "<group>";
@@ -142,11 +79,11 @@
 		/* Begin PBXNativeTarget section */
 			42AEFBAE01D2DFD981F7DA7D /* LingFan */ = {
 				isa = PBXNativeTarget;
-				buildConfigurationList = C892833D335B0F40CD5A5FAB /* Build configuration list for PBXNativeTarget "LingFan" */;
+				buildConfigurationList = 5BA2ED2C3D2E14E62AB7E756;
 				buildPhases = (
-					FCA229C23F166EBB0BA5029E /* Sources */,
-					059DB2086B49B680F85B3555 /* Frameworks */,
-					B9C6EB6F79FC54535ACB3053 /* Resources */,
+					7C0010B090EBC80AE5972A29 /* Sources */,
+					F52F4BA3F158C58891B93D5F /* Frameworks */,
+					D35441678F4E92018E639BC5 /* Resources */,
 				);
 				buildRules = (
 				);
@@ -154,7 +91,7 @@
 				);
 				name = LingFan;
 				productName = LingFan;
-				productReference = D91517BFBDECE389497A425B /* LingFan.app */;
+				productReference = DF56A81F6C35A89FD50C8B5E /* LingFan.app */;
 				productType = "com.apple.product-type.application";
 			};
 		/* End PBXNativeTarget section */
@@ -164,7 +101,6 @@
 				isa = PBXProject;
 				attributes = {
 					BuildIndependentTargetsInParallel = 1;
-					LastSwiftUpdateCheck = 1540;
 					LastUpgradeCheck = 1540;
 					TargetAttributes = {
 						42AEFBAE01D2DFD981F7DA7D = {
@@ -172,7 +108,7 @@
 						};
 					};
 				};
-				buildConfigurationList = 5CF8C997E0150571D04AA034 /* Build configuration list for PBXProject "LingFan" */;
+				buildConfigurationList = 117149896155EB71C4767884;
 				compatibilityVersion = "Xcode 14.0";
 				developmentRegion = en;
 				hasScannedForEncodings = 0;
@@ -181,7 +117,7 @@
 					Base,
 				);
 				mainGroup = 2B731CEFC6751AAE0EC69B98;
-				productRefGroup = 0A2C978E52A76F0AA9F68BB5 /* Products */;
+				productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
 				projectDirPath = "";
 				projectRoot = "";
 				targets = (
@@ -191,7 +127,7 @@
 		/* End PBXProject section */
 
 		/* Begin PBXResourcesBuildPhase section */
-			B9C6EB6F79FC54535ACB3053 /* Resources */ = {
+			D35441678F4E92018E639BC5 /* Resources */ = {
 				isa = PBXResourcesBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
@@ -201,32 +137,31 @@
 		/* End PBXResourcesBuildPhase section */
 
 		/* Begin PBXSourcesBuildPhase section */
-			FCA229C23F166EBB0BA5029E /* Sources */ = {
+			7C0010B090EBC80AE5972A29 /* Sources */ = {
 				isa = PBXSourcesBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
-					F76525F8F07211519D03D22D /* AdbBridge.mm in Sources */,
-					A8A5C656255B824C7E12008F /* AdbService.swift in Sources */,
-					A71C09389300D858AE30271F /* LingFanApp.swift in Sources */,
-					72C90828D414258750F71A3A /* MDColor.swift in Sources */,
-					B8D01C5246C9DEC29F41FF41 /* MDComponents.swift in Sources */,
-					805CA261F573E5F5B0A6200F /* ConsoleStore.swift in Sources */,
-					59B33AEDA8F484585E425AD9 /* ConsoleView.swift in Sources */,
-					2E7E1CB55A395119C2EBD5D2 /* HomeStore.swift in Sources */,
-					0721A0DB65B72E6A789C38AF /* HomeView.swift in Sources */,
-					C3131CE8E1818B2945960D98 /* Placeholders.swift in Sources */,
-					4A9655906566070A7C19E5C1 /* DeviceRecord.swift in Sources */,
+					E9879477F47B68A852A4C917 /* AdbBridge.mm in Sources */,
+					1CEDCB3EDBA9BA95B09A7333 /* AdbService.swift in Sources */,
+					094C39CF6539BBA7978B0597 /* LingFanApp.swift in Sources */,
+					4ECA02CA5B11503D51942EE8 /* MDColor.swift in Sources */,
+					A3334A50BD913EEBF369FFD4 /* MDComponents.swift in Sources */,
+					D0801B6B84AF1E2FEFE2986E /* ConsoleStore.swift in Sources */,
+					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
+					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
+					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					BACC0992D5E0C96A11CC89A4 /* Placeholders.swift in Sources */,
+					FA7DF9CA817BDAE7242CC189 /* DeviceRecord.swift in Sources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 			};
 		/* End PBXSourcesBuildPhase section */
 
 		/* Begin XCBuildConfiguration section */
-			786310E230FDBED96D9BF785 /* Debug */ = {
+			60A59681A1770CF177B4C4A9 /* Debug */ = {
 				isa = XCBuildConfiguration;
 				buildSettings = {
 					ALWAYS_SEARCH_USER_PATHS = NO;
-					CLANG_ANALYZER_NONNULL = YES;
 					CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 					CLANG_CXX_LIBRARY = "libc++";
 					CLANG_ENABLE_MODULES = YES;
@@ -236,18 +171,17 @@
 					SDKROOT = iphoneos;
 					SWIFT_VERSION = 5.0;
 					TARGETED_DEVICE_FAMILY = "1,2";
-					DEBUG_INFORMATION_FORMAT = dwarf;
-					ONLY_ACTIVE_ARCH = YES;
-					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+					ARCHS = arm64;
+					ONLY_ACTIVE_ARCH = NO;
 					GCC_OPTIMIZATION_LEVEL = 0;
+					DEBUG_INFORMATION_FORMAT = dwarf;
 				};
 				name = Debug;
 			};
-			ADB4E0451F1E3639B1B8CE38 /* Release */ = {
+			49FA91BF70DF5C45545DE90A /* Release */ = {
 				isa = XCBuildConfiguration;
 				buildSettings = {
 					ALWAYS_SEARCH_USER_PATHS = NO;
-					CLANG_ANALYZER_NONNULL = YES;
 					CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 					CLANG_CXX_LIBRARY = "libc++";
 					CLANG_ENABLE_MODULES = YES;
@@ -257,13 +191,13 @@
 					SDKROOT = iphoneos;
 					SWIFT_VERSION = 5.0;
 					TARGETED_DEVICE_FAMILY = "1,2";
+					ARCHS = arm64;
+					ONLY_ACTIVE_ARCH = NO;
 					DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-					SWIFT_OPTIMIZATION_LEVEL = "-O";
-					VALIDATE_PRODUCT = YES;
 				};
 				name = Release;
 			};
-			74C08D0A8F5E2B102E337550 /* Debug */ = {
+			62EB05BA8057E74D0EE53102 /* Debug */ = {
 				isa = XCBuildConfiguration;
 				buildSettings = {
 					CODE_SIGN_IDENTITY = "";
@@ -271,18 +205,19 @@
 					CODE_SIGNING_REQUIRED = NO;
 					CURRENT_PROJECT_VERSION = 1;
 					GENERATE_INFOPLIST_FILE = NO;
-					HEADER_SEARCH_PATHS = ("$(SRCROOT)/Vendor/include");
 					INFOPLIST_FILE = Resources/Info.plist;
+					HEADER_SEARCH_PATHS = ("$(SRCROOT)/Vendor/include");
 					LIBRARY_SEARCH_PATHS = ("$(SRCROOT)/Vendor/lib");
+					LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
 					MARKETING_VERSION = 0.5.21.281;
 					OTHER_LDFLAGS = ("-ladb-full", "-lc++", "-lz", "-lresolv", "-framework", "Security", "-framework", "Network");
 					PRODUCT_BUNDLE_IDENTIFIER = com.lingfan.toolbox;
 					PRODUCT_NAME = "$(TARGET_NAME)";
-					SWIFT_OBJC_BRIDGING_HEADER = "";
+					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				};
 				name = Debug;
 			};
-			FEAFF9F934D6111D9F836A20 /* Release */ = {
+			F514164472140E649CCA01D2 /* Release */ = {
 				isa = XCBuildConfiguration;
 				buildSettings = {
 					CODE_SIGN_IDENTITY = "";
@@ -290,34 +225,35 @@
 					CODE_SIGNING_REQUIRED = NO;
 					CURRENT_PROJECT_VERSION = 1;
 					GENERATE_INFOPLIST_FILE = NO;
-					HEADER_SEARCH_PATHS = ("$(SRCROOT)/Vendor/include");
 					INFOPLIST_FILE = Resources/Info.plist;
+					HEADER_SEARCH_PATHS = ("$(SRCROOT)/Vendor/include");
 					LIBRARY_SEARCH_PATHS = ("$(SRCROOT)/Vendor/lib");
+					LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
 					MARKETING_VERSION = 0.5.21.281;
 					OTHER_LDFLAGS = ("-ladb-full", "-lc++", "-lz", "-lresolv", "-framework", "Security", "-framework", "Network");
 					PRODUCT_BUNDLE_IDENTIFIER = com.lingfan.toolbox;
 					PRODUCT_NAME = "$(TARGET_NAME)";
-					SWIFT_OBJC_BRIDGING_HEADER = "";
+					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				};
 				name = Release;
 			};
 		/* End XCBuildConfiguration section */
 
 		/* Begin XCConfigurationList section */
-			5CF8C997E0150571D04AA034 /* Build configuration list for PBXProject "LingFan" */ = {
+			117149896155EB71C4767884 = {
 				isa = XCConfigurationList;
 				buildConfigurations = (
-					786310E230FDBED96D9BF785 /* Debug */,
-					ADB4E0451F1E3639B1B8CE38 /* Release */,
+					60A59681A1770CF177B4C4A9 /* Debug */,
+					49FA91BF70DF5C45545DE90A /* Release */,
 				);
 				defaultConfigurationIsVisible = 0;
 				defaultConfigurationName = Release;
 			};
-			C892833D335B0F40CD5A5FAB /* Build configuration list for PBXNativeTarget "LingFan" */ = {
+			5BA2ED2C3D2E14E62AB7E756 = {
 				isa = XCConfigurationList;
 				buildConfigurations = (
-					74C08D0A8F5E2B102E337550 /* Debug */,
-					FEAFF9F934D6111D9F836A20 /* Release */,
+					62EB05BA8057E74D0EE53102 /* Debug */,
+					F514164472140E649CCA01D2 /* Release */,
 				);
 				defaultConfigurationIsVisible = 0;
 				defaultConfigurationName = Release;
