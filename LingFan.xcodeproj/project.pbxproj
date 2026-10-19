@@ -7,6 +7,12 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		6579666CE1F50D4FFFB1B02F /* DemoContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2F5D51044894BE1C419BFA /* DemoContent.swift */; };
+		4F74CB2AB06FB79863D14B17 /* ToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 473ACC8B51D37B85118DE906 /* ToolsView.swift */; };
+		BD9B12CBC38E23828224D9A8 /* ToolsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F2950CCD88ED3DEB6812A0 /* ToolsStore.swift */; };
+		DCAE5BC6938B9DBE0ED11196 /* RemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A26E56D5FCDA038EE0B0DD8 /* RemoteView.swift */; };
+		C3823F5972921AE6C16C8C41 /* ProcessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88F4C904B58A488D1F4766A /* ProcessView.swift */; };
+		76A04F6B05F51B12D7372409 /* ProcessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9515BB1F223922B2B05B2152 /* ProcessStore.swift */; };
 		500169440A98A640EC4B7F86 /* PairSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11A8071532BC2B24DF42E24 /* PairSheet.swift */; };
 		DFD967D552655E6F86AB618F /* LanScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF857EC19CAC32CC779FC19 /* LanScanner.swift */; };
 			E9879477F47B68A852A4C917 /* AdbBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */; };
@@ -23,6 +29,12 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		BE2F5D51044894BE1C419BFA /* DemoContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoContent.swift; path = Sources/Shared/DemoContent.swift; sourceTree = "<group>"; };
+		473ACC8B51D37B85118DE906 /* ToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ToolsView.swift; path = Sources/Features/Tools/ToolsView.swift; sourceTree = "<group>"; };
+		92F2950CCD88ED3DEB6812A0 /* ToolsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ToolsStore.swift; path = Sources/Features/Tools/ToolsStore.swift; sourceTree = "<group>"; };
+		9A26E56D5FCDA038EE0B0DD8 /* RemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RemoteView.swift; path = Sources/Features/Remote/RemoteView.swift; sourceTree = "<group>"; };
+		B88F4C904B58A488D1F4766A /* ProcessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProcessView.swift; path = Sources/Features/Process/ProcessView.swift; sourceTree = "<group>"; };
+		9515BB1F223922B2B05B2152 /* ProcessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProcessStore.swift; path = Sources/Features/Process/ProcessStore.swift; sourceTree = "<group>"; };
 		E11A8071532BC2B24DF42E24 /* PairSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PairSheet.swift; path = Sources/Features/Home/PairSheet.swift; sourceTree = "<group>"; };
 		2FF857EC19CAC32CC779FC19 /* LanScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanScanner.swift; path = Sources/Features/Home/LanScanner.swift; sourceTree = "<group>"; };
 			DF56A81F6C35A89FD50C8B5E /* LingFan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LingFan.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +78,12 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					BE2F5D51044894BE1C419BFA /* DemoContent.swift */,
+					473ACC8B51D37B85118DE906 /* ToolsView.swift */,
+					92F2950CCD88ED3DEB6812A0 /* ToolsStore.swift */,
+					9A26E56D5FCDA038EE0B0DD8 /* RemoteView.swift */,
+					B88F4C904B58A488D1F4766A /* ProcessView.swift */,
+					9515BB1F223922B2B05B2152 /* ProcessStore.swift */,
 					E11A8071532BC2B24DF42E24 /* PairSheet.swift */,
 					2FF857EC19CAC32CC779FC19 /* LanScanner.swift */,
 					36664063489A20543FE4632E /* Placeholders.swift */,
@@ -158,6 +176,12 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					6579666CE1F50D4FFFB1B02F /* DemoContent.swift in Sources */,
+					4F74CB2AB06FB79863D14B17 /* ToolsView.swift in Sources */,
+					BD9B12CBC38E23828224D9A8 /* ToolsStore.swift in Sources */,
+					DCAE5BC6938B9DBE0ED11196 /* RemoteView.swift in Sources */,
+					C3823F5972921AE6C16C8C41 /* ProcessView.swift in Sources */,
+					76A04F6B05F51B12D7372409 /* ProcessStore.swift in Sources */,
 					500169440A98A640EC4B7F86 /* PairSheet.swift in Sources */,
 					DFD967D552655E6F86AB618F /* LanScanner.swift in Sources */,
 					BACC0992D5E0C96A11CC89A4 /* Placeholders.swift in Sources */,

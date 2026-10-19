@@ -52,6 +52,8 @@
 	<!-- 局域网 ADB 发现与连接所需 -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于发现并连接同一局域网内的车机与电视设备</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于把车机截图保存到相册</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_adb._tcp</string>

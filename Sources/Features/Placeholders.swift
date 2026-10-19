@@ -216,30 +216,6 @@ struct AppsView: View {
     }
 }
 
-struct ProcessView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "进程管理", icon: "cpu.fill",
-                        tint: MDColor.process, note: "监控运行内存 / 结束卡死进程")
-    }
-}
-
-struct RemoteView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "虚拟遥控", icon: "av.remote.fill",
-                        tint: MDColor.remote, note: "模拟按键 / 遥控器 / 输入文字")
-    }
-}
-
-struct ToolsView: View {
-    let device: DeviceRecord
-    var body: some View {
-        PlaceholderPage(title: "常用工具", icon: "wrench.adjustable.fill",
-                        tint: MDColor.tool, note: "截图 / 录屏 / 日志 / 重启")
-    }
-}
-
 struct MirrorView: View {
     let device: DeviceRecord
     var body: some View {
