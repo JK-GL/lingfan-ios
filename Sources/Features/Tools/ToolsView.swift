@@ -14,6 +14,7 @@ struct ToolsView: View {
     @State private var pendingReboot: ToolsStore.RebootMode = .normal
     @State private var showLog = false
     @State private var showShot = false
+    @State private var videoURL: URL?
 
     var body: some View {
         ZStack {
@@ -22,6 +23,8 @@ struct ToolsView: View {
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
                     screenshotCard
+                    recordCard
+                    topWindowCard
                     snapshotCard
                     logCard
                     powerCard
@@ -52,6 +55,14 @@ struct ToolsView: View {
         }
         .sheet(isPresented: $showShot) {
             ScreenshotSheet(image: store.screenshot, isPresented: $showShot)
+        }
+        .sheet(isPresented: Binding(
+            get: { videoURL != nil },
+            set: { if !$0 { videoURL = nil } }
+        )) {
+            if let videoURL {
+                ShareSheet(items: [videoURL])
+            }
         }
         .alert("确认\(pendingReboot.title)", isPresented: $showRebootConfirm) {
             Button("取消", role: .cancel) {}
@@ -100,6 +111,93 @@ struct ToolsView: View {
                 Text("走 screencap + base64，1080p 约 200 KB")
                     .font(.system(size: 11))
                     .foregroundStyle(MDColor.textTertiary)
+            }
+        }
+    }
+
+    // MARK: - 屏幕录制
+
+    private var recordCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    cardTitle(icon: "record.circle", tint: MDColor.process, title: "屏幕录制")
+                    Spacer()
+                    if store.recording {
+                        Text(String(format: "%02d:%02d", store.recordingSeconds / 60,
+                                    store.recordingSeconds % 60))
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(MDColor.danger)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            if store.recording {
+                                if let path = await store.stopRecording() {
+                                    videoURL = URL(fileURLWithPath: path)
+                                }
+                            } else {
+                                await store.startRecording()
+                            }
+                        }
+                    } label: {
+                        Text(store.recording ? "停止并保存" : "开始录制（最长 30 秒）")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(store.recording ? .white : MDColor.process)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                    .fill(store.recording
+                                          ? MDColor.danger
+                                          : MDColor.process.opacity(0.10))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text("走 screenrecord 录制 MP4，停止后自动取回本机")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textTertiary)
+            }
+        }
+    }
+
+    // MARK: - 顶层窗口
+
+    private var topWindowCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    cardTitle(icon: "rectangle.on.rectangle", tint: MDColor.remote,
+                              title: "顶层窗口")
+                    Spacer()
+                    Button {
+                        Task { await store.loadTopWindow() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(MDColor.remote)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(store.topWindowText.isEmpty
+                     ? "点击右上角刷新读取当前前台 Activity"
+                     : store.topWindowText)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(store.topWindowText.isEmpty
+                                     ? MDColor.textTertiary : MDColor.textPrimary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                            .fill(MDColor.surfaceHigh)
+                    )
             }
         }
     }

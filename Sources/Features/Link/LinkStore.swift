@@ -2,46 +2,45 @@ import Foundation
 
 /// 菱粉联动数据层
 ///
-/// 这是这个工具的核心差异化功能：通过 `content call` 直接驱动菱粉桌面
-/// （com.zzh.launcher50s）的内部 Provider，做天气 Key、语音定制、图标替换。
+/// 逐行对照原版 LingFansLinkSupport.kt 实现，不做任何猜测。
 ///
-/// 协议（从原版 LingFansLinkSupport.kt 逐字提取）：
-///   content call --user 0 --uri content://<authority> --method <method>
-///                [--arg "<arg>"]
-///                [--extra "<key>:s:<value>"]...
+/// 协议：content call --uri content://<authority> --method <M> [--arg x] [--extra "k:s:v"]
 ///
-/// authority：com.zzh.launcher50s.alpha.link（新）/ com.zzh.launcher50s.link（旧）
-/// 返回：Result: Bundle[{key=value, ...}]，需要自己解析（不能 JSON 解）
-///
-/// ⚠️ 返回值格式必须在真车机上验证。这里做了宽容解析，
-/// 解析不出来时把原始输出原样展示，方便定位。
-@MainActor
+/// 四条关键规则（全部来自源码）：
+///   1. 主键走 `arg`（位置参数），不是 extras
+///   2. extras 只放附属字段，字段名必须精确匹配
+///   3. 成功判定看返回里的 `ok` 布尔值，不是看有没有 "error" 字样
+///   4. user 依次试 null → current → 0（不同 ROM 权限域不同）
 final class LinkStore: ObservableObject {
+
+    // MARK: - 常量（对齐原版 21-26 行）
 
     static let authorityNew = "com.zzh.launcher50s.alpha.link"
     static let authorityLegacy = "com.zzh.launcher50s.link"
     static let launcherPackage = "com.zzh.launcher50s.alpha"
     static let extraTypeString = "s"
+    /// 联动功能要求的最低桌面版本（原版 LINGFANS_LINK_MIN_VERSION）
+    static let minVersion = "3.1.1"
 
-    /// 探测到的可用 authority
+    // MARK: - 状态
+
     @Published private(set) var authority: String?
     @Published private(set) var available = false
     @Published private(set) var probing = false
 
-    /// 桌面版本信息
-    @Published private(set) var versionInfo: [String: String] = [:]
-    /// 激活状态
-    @Published private(set) var activationInfo: [String: String] = [:]
-    /// 天气配置
-    @Published private(set) var weatherApiKey: String = ""
-    @Published private(set) var weatherHost: String = ""
-    /// 语音定制项
+    @Published private(set) var versionName = ""
+    @Published private(set) var versionCode: Int64 = -1
+    @Published private(set) var versionTooLow = false
+    @Published private(set) var activated = false
+    @Published private(set) var activationMessage = ""
+
+    @Published private(set) var weatherApiKey = ""
+    @Published private(set) var weatherHost = ""
+
     @Published private(set) var voiceItems: [String: String] = [:]
-    /// 可替换图标的 App
     @Published private(set) var appIcons: [String: String] = [:]
 
-    /// 原始输出，用于排查格式不符
-    @Published private(set) var lastRawOutput: String = ""
+    @Published private(set) var lastRawOutput = ""
     @Published private(set) var busyMessage: String?
     @Published private(set) var errorMessage: String?
 
@@ -54,7 +53,6 @@ final class LinkStore: ObservableObject {
 
     // MARK: - 探测
 
-    /// 探测菱粉桌面是否存在，并确定用哪个 authority
     func probe() async {
         probing = true
         errorMessage = nil
@@ -67,131 +65,207 @@ final class LinkStore: ObservableObject {
             return
         }
 
-        // 先看包在不在
         let pkgs = await shellLines("pm list packages \(Self.launcherPackage) 2>/dev/null")
         guard pkgs.contains(where: { $0.contains(Self.launcherPackage) }) else {
             available = false
-            authority = nil
             errorMessage = "未检测到菱粉桌面（\(Self.launcherPackage)）。此功能仅对菱粉定制车机有效。"
             return
         }
 
-        // 依次试两个 authority，谁能返回非空结果就用谁
-        for candidate in [Self.authorityNew, Self.authorityLegacy] {
-            let out = await call(method: "getLauncherVersionInfo",
-                                 authority: candidate)
-            if !out.isEmpty {
-                authority = candidate
-                available = true
-                versionInfo = out
-                lastRawOutput = out.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
-                return
-            }
+        let info = await request(method: "getLauncherVersionInfo")
+        guard let info else {
+            errorMessage = "菱粉桌面已安装，但 Provider 无响应。桌面版本可能过旧。"
+            return
         }
 
-        // 包在但两个 authority 都无响应
-        available = false
-        authority = nil
-        errorMessage = "菱粉桌面已安装，但 Provider 无响应。可能桌面版本过旧或未授权。"
+        versionName = info["versionName"] ?? ""
+        versionCode = Int64(info["versionCode"] ?? "") ?? -1
+
+        // 版本门槛：低于 3.1.1 联动接口不可用
+        if !versionName.isEmpty && !Self.meetsMinimum(versionName) {
+            versionTooLow = true
+            errorMessage = "联动功能需要菱粉桌面 \(Self.minVersion) 及以上，当前 \(versionName)。"
+        } else {
+            versionTooLow = false
+        }
+        available = true
     }
 
-    // MARK: - 各项读取
+    /// 版本比较：逐段数字对比，缺失段按 0
+    static func meetsMinimum(_ version: String) -> Bool {
+        let cur = version.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+        let min = minVersion.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+        guard !cur.isEmpty, !min.isEmpty else { return false }
+        for i in 0..<max(cur.count, min.count) {
+            let a = i < cur.count ? cur[i] : 0
+            let b = i < min.count ? min[i] : 0
+            if a != b { return a > b }
+        }
+        return true
+    }
+
+    // MARK: - 读取
 
     func loadActivation() async {
-        guard let auth = authority else { return }
-        busyMessage = "读取激活状态…"
-        defer { busyMessage = nil }
-        activationInfo = await call(method: "getActivationStatus", authority: auth)
+        let r = await request(method: "getActivationStatus")
+        guard let r else { return }
+        activated = (r["activated"]?.lowercased() == "true")
+        activationMessage = r["message"] ?? (activated ? "ok" : "需桌面激活")
     }
 
     func loadWeather() async {
-        guard let auth = authority else { return }
-        busyMessage = "读取天气配置…"
-        defer { busyMessage = nil }
-        let out = await call(method: "getWeatherApiKey", authority: auth)
-        weatherApiKey = out["apiKey"] ?? ""
-        weatherHost = out["host"] ?? ""
+        let r = await request(method: "getWeatherApiKey")
+        guard let r else { return }
+        weatherApiKey = (r["apiKey"] ?? "").trimmingCharacters(in: .whitespaces)
+        weatherHost = (r["host"] ?? "").trimmingCharacters(in: .whitespaces)
     }
 
     func loadVoice() async {
-        guard let auth = authority else { return }
-        busyMessage = "读取语音定制…"
-        defer { busyMessage = nil }
-        voiceItems = await call(method: "getVoiceCustomizations", authority: auth)
+        voiceItems = await request(method: "getVoiceCustomizations") ?? [:]
     }
 
     func loadIcons() async {
-        guard let auth = authority else { return }
-        busyMessage = "读取图标定制…"
-        defer { busyMessage = nil }
-        appIcons = await call(method: "getLaunchableAppIcons", authority: auth)
+        appIcons = await request(method: "getLaunchableAppIcons") ?? [:]
     }
 
-    // MARK: - 各项写入
+    // MARK: - 写入（参数与原版逐字一致）
 
-    /// 设置天气 API Key。原版要求同时带 host。
+    /// 原版 244 行：arg = apiKey，extras 只有 host
     func setWeather(apiKey: String, host: String) async -> Bool {
-        guard let auth = authority else { return false }
+        let key = apiKey.trimmingCharacters(in: .whitespaces)
+        let h = host.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else {
+            errorMessage = "API Key 不能为空"
+            return false
+        }
+
         busyMessage = "写入天气配置…"
         defer { busyMessage = nil }
 
-        let out = await call(
+        let r = await request(
             method: "setWeatherApiKey",
-            authority: auth,
-            extras: [("apiKey", apiKey), ("host", host)]
+            arg: key,
+            extras: [("host", h)]
         )
-        if out.isEmpty {
-            // 有些实现无返回，视为成功但需复核
-            await loadWeather()
-            return weatherApiKey == apiKey
-        }
         await loadWeather()
-        return weatherApiKey == apiKey
+        // 以回读结果为准，不信单次回执
+        return weatherApiKey == key
     }
 
-    /// 重置某一项语音定制
+    /// 原版 273 行：arg = key，extras 为空
     func resetVoice(key: String) async -> Bool {
-        guard let auth = authority else { return false }
         busyMessage = "重置语音定制…"
         defer { busyMessage = nil }
-        _ = await call(method: "resetVoiceCustomization", authority: auth,
-                       extras: [("key", key)])
+        _ = await request(method: "resetVoiceCustomization", arg: key, extras: [])
         await loadVoice()
         return true
     }
 
-    /// 重置某个 App 的图标
+    /// 原版 318 行：arg = packageName，extras 也带 packageName
     func resetIcon(package: String) async -> Bool {
-        guard let auth = authority else { return false }
         busyMessage = "重置图标…"
         defer { busyMessage = nil }
-        _ = await call(method: "resetLaunchableAppIcon", authority: auth,
-                       extras: [("package", package)])
+        _ = await request(
+            method: "resetLaunchableAppIcon",
+            arg: package,
+            extras: [("packageName", package)]
+        )
         await loadIcons()
         return true
     }
 
-    /// 让桌面刷新图标缓存
+    /// 原版 332 行：无 arg 无 extras
     func refreshIcons() async {
-        guard let auth = authority else { return }
         busyMessage = "刷新图标缓存…"
         defer { busyMessage = nil }
-        _ = await call(method: "refreshLaunchableAppIcons", authority: auth)
+        _ = await request(method: "refreshLaunchableAppIcons")
         await loadIcons()
+    }
+
+    /// 原版 421 行：arg = key
+    func exportVoicePreview(key: String) async -> String? {
+        busyMessage = "导出语音预览…"
+        defer { busyMessage = nil }
+        let r = await request(method: "exportVoicePreview", arg: key, extras: [])
+        return r?["path"]
+    }
+
+    /// 原版 431 行：arg = key
+    func playVoicePreview(key: String) async -> Bool {
+        busyMessage = "车机播放预览…"
+        defer { busyMessage = nil }
+        let r = await request(method: "playVoicePreviewOnDevice", arg: key, extras: [])
+        return r != nil
     }
 
     // MARK: - 协议实现
 
-    /// 拼 content call 命令
-    ///
-    /// 参数转义：单引号包裹整个 arg，内部单引号用 '\'' 处理。
-    /// 原版用双引号，但 shell 里双引号仍会解释 $ 和反引号，
-    /// 单引号更安全（天气 Key 里可能含特殊字符）。
+    /// 原版 457-530 行的完整回退链
+    private func request(method: String,
+                         arg: String? = nil,
+                         extras: [(String, String)] = []) async -> [String: String]? {
+        let authorities = [Self.authorityNew, Self.authorityLegacy]
+        var lastMessage = "调用菱粉联动接口失败"
+
+        for auth in authorities {
+            // 三级 user 回退：null → current → 0
+            let users: [String?] = [nil, "current", "0"]
+            for user in users {
+                let cmd = buildCommand(authority: auth, method: method,
+                                       arg: arg, extras: extras, user: user)
+                let lines = await shellLines(cmd)
+                let raw = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                lastRawOutput = raw
+
+                guard !raw.isEmpty else {
+                    lastMessage = "无输出"
+                    continue
+                }
+
+                let values = parseBundle(raw)
+                let message = values["message"].flatMap { $0.isEmpty ? nil : $0 } ?? raw
+
+                // 成功判定：ok == true（原版 507 行）
+                if values["ok"]?.lowercased() == "true" {
+                    authority = auth
+                    available = true
+                    errorMessage = nil
+                    return values
+                }
+
+                lastMessage = message
+
+                // 只有「找不到 provider」才换 authority；
+                // 其他错误（权限拒绝等）属真实失败，不该继续重试
+                if !message.lowercased().contains("could not find provider") {
+                    errorMessage = message
+                    return nil
+                }
+            }
+        }
+
+        // 全部失败：区分是 provider 缺失还是别的原因
+        if lastMessage.lowercased().contains("could not find provider") {
+            errorMessage = "菱粉桌面 Provider 未注册。请确认桌面版本 ≥ \(Self.minVersion)。"
+        } else if errorMessage == nil {
+            errorMessage = lastMessage
+        }
+        return nil
+    }
+
+    /// 命令拼接（原版 528-560 行）
     private func buildCommand(authority: String,
                               method: String,
                               arg: String?,
-                              extras: [(String, String)]) -> String {
-        var parts = ["content call --user 0 --uri content://\(authority) --method \(method)"]
+                              extras: [(String, String)],
+                              user: String?) -> String {
+        var parts = ["content call"]
+        if let user, !user.isEmpty {
+            parts.append("--user \(user)")
+        }
+        parts.append("--uri content://\(authority)")
+        parts.append("--method \(method)")
+
         if let arg, !arg.isEmpty {
             parts.append("--arg \(shellQuote(arg))")
         }
@@ -201,38 +275,22 @@ final class LinkStore: ObservableObject {
         return parts.joined(separator: " ")
     }
 
-    /// 单引号转义：把 ' 变成 '\''
+    /// 单引号转义。原版用双引号，但双引号会解释 $ 和反引号，
+    /// 天气 Key 里可能含这类字符，单引号更安全。
     private func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private func call(method: String,
-                      authority: String,
-                      arg: String? = nil,
-                      extras: [(String, String)] = []) async -> [String: String] {
-        let cmd = buildCommand(authority: authority, method: method, arg: arg, extras: extras)
-        let lines = await shellLines(cmd)
-        let raw = lines.joined(separator: "\n")
-        lastRawOutput = raw
-
-        if raw.lowercased().contains("error") || raw.lowercased().contains("exception") {
-            errorMessage = raw
-            return [:]
-        }
-        return parseBundle(raw)
-    }
-
-    /// 解析 `Result: Bundle[{key=value, k2=v2}]`
+    /// 解析 `Result: Bundle[{k=v, k2=v2}]`
     ///
-    /// 不能按逗号粗暴切分 —— 值里可能含逗号（例如 JSON）。
-    /// 原版的做法是跟踪 {} [] 深度，只在深度 0 且后跟空格时切。
+    /// 按 {} [] 深度切分，不能粗暴 split 逗号 —— 值里可能含逗号。
+    /// 原版 564-605 行就是这个算法。
     private func parseBundle(_ output: String) -> [String: String] {
         var text = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return [:] }
 
-        for prefix in ["Result: ", "Bundle["] where text.hasPrefix(prefix) {
-            text.removeFirst(prefix.count)
-        }
+        if text.hasPrefix("Result: ") { text.removeFirst("Result: ".count) }
+        if text.hasPrefix("Bundle[") { text.removeFirst("Bundle[".count) }
         if text.hasSuffix("]") { text.removeLast() }
         if text.hasPrefix("{") { text.removeFirst() }
         if text.hasSuffix("}") { text.removeLast() }
@@ -240,12 +298,12 @@ final class LinkStore: ObservableObject {
         let body = text.trimmingCharacters(in: .whitespaces)
         guard !body.isEmpty else { return [:] }
 
-        // 深度感知切分
         var parts: [String] = []
         var current = ""
         var bracket = 0
         var brace = 0
         let chars = Array(body)
+
         for i in 0..<chars.count {
             let c = chars[i]
             if c == "[" { bracket += 1 }
@@ -289,8 +347,11 @@ final class LinkStore: ObservableObject {
     // MARK: - 演示
 
     private func loadDemo() {
-        versionInfo = ["version": "2.14.3", "buildType": "release", "protocol": "alpha"]
-        activationInfo = ["activated": "true", "expireAt": "长期", "deviceId": "DEMO0000000001"]
+        versionName = "3.2.4"
+        versionCode = 3204
+        versionTooLow = false
+        activated = true
+        activationMessage = "ok"
         weatherApiKey = "b2f4c8e19c1d"
         weatherHost = "api.seniverse.com"
         voiceItems = [
@@ -303,7 +364,7 @@ final class LinkStore: ObservableObject {
             "com.sgmw.carradio": "自定义-1",
             "com.android.settings": "默认",
         ]
-        lastRawOutput = "Result: Bundle[{version=2.14.3, buildType=release, protocol=alpha}]"
+        lastRawOutput = "Result: Bundle[{ok=true, versionName=3.2.4, versionCode=3204}]"
         errorMessage = nil
     }
 }

@@ -18,6 +18,7 @@ import AppKit
 ///   file_sync 协议在 iOS 移植版里没验证过，
 ///   base64 走的是标准 shell 通道，风险最低。代价是体积膨胀 33%，
 ///   但 1080p 截图约 200KB，完全可接受。
+@MainActor
 final class ToolsStore: ObservableObject {
 
     @Published private(set) var running = false
@@ -64,6 +65,139 @@ final class ToolsStore: ObservableObject {
         }
         screenshot = img
         lastMessage = "截图成功（\(data.count / 1024) KB）"
+    }
+
+    // MARK: - 顶层窗口（对齐原版 ToolItem.kt:297）
+
+    @Published private(set) var topWindowText: String = ""
+
+    func loadTopWindow() async {
+        busyMessage = "读取顶层窗口…"
+        defer { busyMessage = nil }
+
+        if isDemo {
+            topWindowText = """
+            mCurrentFocus=Window{3f2a1b com.zzh.launcher50s/com.zzh.launcher50s.MainActivity}
+            mFocusedApp=AppWindowToken{9c4d2e token=Token{5a1f3b ActivityRecord{com.zzh.launcher50s/.MainActivity}}}
+            """
+            return
+        }
+
+        let lines = await shellLines(
+            "dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp'"
+        )
+        topWindowText = lines.isEmpty
+            ? "没有读到窗口信息（部分 ROM 限制了 dumpsys 权限）"
+            : lines.joined(separator: "\n")
+        lastMessage = nil
+    }
+
+    // MARK: - 屏幕录制
+
+    @Published private(set) var recording = false
+    @Published private(set) var recordingSeconds: Int = 0
+    private var recordingTask: Task<Void, Never>?
+
+    /// 用 screenrecord 录到设备临时文件，停止后拉回本机。
+    /// 原版命令：screenrecord --time-limit N /data/local/tmp/screen.mp4
+    func startRecording(maxSeconds: Int = 30) async {
+        guard !recording else { return }
+
+        if isDemo {
+            recording = true
+            recordingSeconds = 0
+            recordingTask = Task { @MainActor [weak self] in
+                while let self, self.recording {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if Task.isCancelled { break }
+                    self.recordingSeconds += 1
+                }
+            }
+            return
+        }
+
+        busyMessage = "录制中（最长 \(maxSeconds) 秒）…"
+        recording = true
+        recordingSeconds = 0
+        lastMessage = nil
+
+        // 后台跑 screenrecord，同时计时
+        let cmd = "screenrecord --time-limit \(maxSeconds) /data/local/tmp/lingfan_rec.mp4"
+        recordingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // 放到后台队列执行阻塞命令
+            let service = AdbService.shared
+            DispatchQueue.global(qos: .userInitiated).async {
+                _ = service.run(["shell", cmd])
+            }
+            while self.recording {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { break }
+                self.recordingSeconds += 1
+                if self.recordingSeconds >= maxSeconds {
+                    // screenrecord 到达 --time-limit 会自行结束，
+                    // 这里同步把状态收掉，否则界面会一直显示「录制中」
+                    self.recording = false
+                    break
+                }
+            }
+        }
+        busyMessage = nil
+    }
+
+    func stopRecording() async -> String? {
+        recording = false
+        recordingTask?.cancel()
+        recordingTask = nil
+
+        if isDemo {
+            lastMessage = "演示模式未生成视频文件"
+            return nil
+        }
+
+        busyMessage = "停止录制并取回…"
+        defer { busyMessage = nil }
+
+        // screenrecord 响应 SIGINT 才会正常封盘
+        _ = await shellLines("pkill -INT screenrecord")
+
+        let dir = FilesStore.localPullDirectory()
+        let dest = dir.appendingPathComponent("lingfan_rec.mp4")
+        try? FileManager.default.removeItem(at: dest)
+
+        // 给系统一点时间写完文件
+        try? await Task.sleep(nanoseconds: 900_000_000)
+
+        let result = await runCommand(["pull", "/data/local/tmp/lingfan_rec.mp4", dest.path])
+        _ = await shellLines("rm -f /data/local/tmp/lingfan_rec.mp4")
+
+        if FileManager.default.fileExists(atPath: dest.path) {
+            lastPulledVideoPath = dest.path
+            lastMessage = "录制完成"
+            return dest.path
+        }
+        let alt = dest.appendingPathExtension("1")
+        if FileManager.default.fileExists(atPath: alt.path) {
+            try? FileManager.default.moveItem(at: alt, to: dest)
+            lastPulledVideoPath = dest.path
+            return dest.path
+        }
+        return result.output.isEmpty ? "取回视频失败：无回执" : result.output
+    }
+
+    @Published private(set) var lastPulledVideoPath: String?
+
+    private struct ToolsCmdResult {
+        let success: Bool
+        let output: String
+    }
+
+    private func runCommand(_ args: [String]) async -> ToolsCmdResult {
+        await withCheckedContinuation { (cont: CheckedContinuation<ToolsCmdResult, Never>) in
+            adb.runAsync(args) { r in
+                cont.resume(returning: ToolsCmdResult(success: r.success, output: r.output))
+            }
+        }
     }
 
     // MARK: - 日志

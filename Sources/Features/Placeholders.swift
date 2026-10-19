@@ -33,7 +33,21 @@ struct InfoView: View {
                 MDCard {
                     VStack(alignment: .leading, spacing: 14) {
                         sectionTitle("处理器")
-                        infoRow("CPU", info.cpuInfo)
+                        infoRow("平台", info.cpuInfo)
+                        if !info.cpuModel.isEmpty {
+                            infoRow("型号", info.cpuModel)
+                        }
+                    }
+                }
+                MDCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        sectionTitle("电量与温度")
+                        infoRow("电量", info.batteryLevel.isEmpty
+                               ? "—" : "\(info.batteryLevel)%")
+                        infoRow("充电", info.isCharging ? "正在充电" : "未充电")
+                        if !info.thermalText.isEmpty {
+                            infoRow("温度", info.thermalText)
+                        }
                     }
                 }
                 MDCard {
@@ -41,6 +55,18 @@ struct InfoView: View {
                         sectionTitle("存储空间")
                         infoRow("内部存储", info.totalStorage)
                         infoRow("可用", info.availStorage)
+                    }
+                }
+                if !info.currentFocus.isEmpty {
+                    MDCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            sectionTitle("当前前台")
+                            Text(info.currentFocus)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(MDColor.textPrimary)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -88,11 +114,51 @@ struct InfoView: View {
         d.sdk = await shell("getprop ro.build.version.sdk")
         d.resolution = (await shell("wm size")).replacingOccurrences(of: "Physical size: ", with: "")
         d.density = (await shell("wm density")).replacingOccurrences(of: "Physical density: ", with: "")
-        d.cpuInfo = await shell("getprop ro.board.platform")
+
+        // 对齐原版 DeviceFullInfo.kt：优先平台代号，退回落芯片厂商
+        let platform = await shell("getprop ro.board.platform")
+        let hardware = await shell("getprop ro.hardware")
+        let socMan = await shell("getprop ro.soc.manufacturer")
+        d.cpuInfo = [platform.isEmpty ? hardware : platform, socMan]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+
+        // CPU 核心型号：从 /proc/cpuinfo 里提取第一次出现的 Hardware / model name
+        let cpuRaw = await shellMultiple(
+            "cat /proc/cpuinfo | grep -m1 -E 'Hardware|model name|Processor'"
+        )
+        d.cpuModel = cpuRaw
+
         d.totalStorage = await shell("df -h /data 2>/dev/null | tail -1")
+
+        // 电量与充电状态（原版读 AC powered 判断是否在充电）
+        let batLevel = await shell("dumpsys battery | grep level")
+        d.batteryLevel = batLevel.split(separator: ":").last
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        let acPowered = await shell("dumpsys battery | grep 'AC powered'")
+        d.isCharging = acPowered.lowercased().contains("true")
+
+        // 温度：优先 thermalservice，比 thermal_zone 更通用
+        let thermal = await shellMultiple("dumpsys thermalservice | grep -m3 -i 'temperature'")
+        d.thermalText = thermal
+
+        // 当前前台界面
+        let focus = await shell(
+            "dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp' | head -2"
+        )
+        d.currentFocus = focus
 
         info = d
         loading = false
+    }
+
+    /// 取多行输出，用于 cpuinfo / thermalservice 这类需要多行的场景
+    private func shellMultiple(_ c: String) async -> String {
+        await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+            AdbService.shared.shellLines(c) { lines in
+                cont.resume(returning: lines.joined(separator: "\n"))
+            }
+        }
     }
 }
 

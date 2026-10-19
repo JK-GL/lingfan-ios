@@ -179,6 +179,28 @@ struct AppsView: View {
                 Menu {
                     Button {
                         Task {
+                            if let err = await store.forceStop(app) {
+                                actionError = err
+                            }
+                        }
+                    } label: {
+                        Label("强制停止", systemImage: "stop.circle")
+                    }
+
+                    Button {
+                        Task {
+                            if let err = await store.clearData(app) {
+                                actionError = err
+                            }
+                        }
+                    } label: {
+                        Label("清除数据", systemImage: "trash.slash")
+                    }
+
+                    Divider()
+
+                    Button {
+                        Task {
                             if let err = await store.extract(app) {
                                 actionError = err
                             } else if let p = store.lastPulledLocalPath {

@@ -150,19 +150,41 @@ struct LinkView: View {
             VStack(alignment: .leading, spacing: 10) {
                 sectionTitle("版本与激活", icon: "checkmark.seal.fill", tint: MDColor.app)
 
-                if store.versionInfo.isEmpty && store.activationInfo.isEmpty {
+                if store.versionName.isEmpty {
                     Text("读取中…")
                         .font(.system(size: 13))
                         .foregroundStyle(MDColor.textSecondary)
                 } else {
-                    ForEach(store.versionInfo.sorted(by: { $0.key < $1.key }), id: \.key) { kv in
-                        kvRow(kv.key, kv.value)
+                    kvRow("桌面版本", store.versionName)
+                    if store.versionCode > 0 {
+                        kvRow("版本号", "\(store.versionCode)")
                     }
-                    if !store.activationInfo.isEmpty {
-                        Divider().background(MDColor.outlineVariant)
-                        ForEach(store.activationInfo.sorted(by: { $0.key < $1.key }), id: \.key) { kv in
-                            kvRow(kv.key, kv.value)
+                    kvRow("最低要求", LinkStore.minVersion)
+
+                    Divider().background(MDColor.outlineVariant)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: store.activated
+                              ? "checkmark.seal.fill" : "exclamationmark.seal.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(store.activated ? MDColor.success : MDColor.warning)
+                        Text(store.activated ? "已激活" : "未激活")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(store.activated ? MDColor.success : MDColor.warning)
+                        if !store.activationMessage.isEmpty && store.activationMessage != "ok" {
+                            Text(store.activationMessage)
+                                .font(.system(size: 11))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .lineLimit(1)
                         }
+                        Spacer(minLength: 0)
+                    }
+
+                    if store.versionTooLow {
+                        Text("当前版本低于 \(LinkStore.minVersion)，部分联动功能可能不可用。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MDColor.warning)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

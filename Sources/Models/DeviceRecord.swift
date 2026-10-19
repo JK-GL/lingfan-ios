@@ -92,6 +92,15 @@ struct DeviceInfo {
     var batteryLevel: String = ""
     var batteryStatus: String = ""
 
+    /// CPU 型号（/proc/cpuinfo 的 Hardware 或 model name）
+    var cpuModel: String = ""
+    /// 是否在充电（dumpsys battery 的 AC powered）
+    var isCharging: Bool = false
+    /// thermalservice 原始温度行
+    var thermalText: String = ""
+    /// 当前前台 Activity / Package
+    var currentFocus: String = ""
+
     var displayName: String {
         let parts = [brand, model].filter { !$0.isEmpty }
         return parts.isEmpty ? "未知设备" : parts.joined(separator: " ")

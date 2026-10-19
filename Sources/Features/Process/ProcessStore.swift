@@ -2,57 +2,76 @@ import Foundation
 
 /// 进程管理的数据层
 ///
-/// 解析目标：`ps -A -o PID,USER,RSS,VSZ,STAT,NAME` 与 `dumpsys meminfo` 汇总。
-/// 车机 ROM 差异大，这里对 `ps` 输出做宽松解析：
-///   - 优先用带表头的 `ps -A -o ...`（含 RSS 列）
-///   - 失败则退回 `ps -A`（列不固定，只能拿 PID/NAME）
+/// 严格对齐原版 ProcessInfo.kt:602-635：
+///   ps -A -o PID,RSS,NAME        ← 只有三列，老 ROM 也支持
+///   dumpsys meminfo（取 Total RAM / Free RAM）
+///   kill <pid>                   ← SIGTERM，不是 -9
+///
+/// 关键过滤（原版第 612 行）：
+///   进程名必须含 "." 且不以 "/" 开头 —— 即只保留 App 进程，
+///   把内核线程（kworker、ksoftirqd 等几十个）全部滤掉。
+///   没有这条过滤，列表会被噪音淹没，用户根本找不到要杀的那个 App。
 final class ProcessStore: ObservableObject {
 
     struct Proc: Identifiable, Hashable {
         let pid: Int
-        let user: String
-        /// 物理内存 KB
-        let rssKB: Int
-        /// 虚拟内存 KB
-        let vszKB: Int
-        let state: String
+        /// 完整进程名，例如 com.zzh.launcher50s 或 com.zzh.launcher50s:remote
         let name: String
+        /// 包名（进程名冒号前）
+        let packageName: String
+        /// 是否主进程
+        let isMainProcess: Bool
+        /// 物理内存 KB（ps 的 RSS 列）
+        let rssKB: Int
 
         var id: Int { pid }
 
-        /// 人类可读内存
+        /// 进程名冒号后的部分，例如 :remote
+        var subProcessSuffix: String {
+            guard let colon = name.firstIndex(of: ":") else { return "" }
+            return String(name[colon...])
+        }
+
         var rssText: String {
-            if rssKB >= 1024 * 1024 { return String(format: "%.1f GB", Double(rssKB) / 1048576.0) }
+            if rssKB >= 1048576 { return String(format: "%.1f GB", Double(rssKB) / 1048576.0) }
             if rssKB >= 1024 { return String(format: "%.1f MB", Double(rssKB) / 1024.0) }
             return "\(rssKB) KB"
         }
-
-        /// 是否系统进程（user 为 root/system 等）
-        var isSystem: Bool {
-            let u = user.lowercased()
-            return u == "root" || u == "system" || u.contains("system") || u.contains("radio")
-        }
-
-        var isRunning: Bool {
-            state.uppercased().hasPrefix("R")
-        }
     }
 
-    @Published private(set) var processes: [Proc] = []
+    /// 按包名聚合的进程组，与原版 processList 结构一致
+    struct Group: Identifiable, Hashable {
+        let packageName: String
+        var processes: [Proc]
+
+        var id: String { packageName }
+
+        var totalRssKB: Int { processes.reduce(0) { $0 + $1.rssKB } }
+        var totalRssText: String {
+            if totalRssKB >= 1048576 { return String(format: "%.1f GB", Double(totalRssKB) / 1048576.0) }
+            if totalRssKB >= 1024 { return String(format: "%.1f MB", Double(totalRssKB) / 1024.0) }
+            return "\(totalRssKB) KB"
+        }
+        var processCount: Int { processes.count }
+    }
+
+    @Published private(set) var groups: [Group] = []
     @Published private(set) var loading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var totalMemoryText = "--"
     @Published private(set) var usedMemoryText = "--"
-    @Published private(set) var processCount = 0
+    @Published private(set) var freeMemoryText = "--"
+    @Published private(set) var memoryRatio: Double = 0
     @Published private(set) var killedMessage: String?
 
     var isDemo = false
     private let adb = AdbService.shared
-    private let maxRows = 400
 
     func bind(isDemo: Bool) {
         self.isDemo = isDemo
     }
+
+    var totalProcessCount: Int { groups.reduce(0) { $0 + $1.processCount } }
 
     // MARK: - 加载
 
@@ -66,27 +85,29 @@ final class ProcessStore: ObservableObject {
             return
         }
 
-        let meminfo = await shellLines("cat /proc/meminfo | head -5")
-        parseMemInfo(meminfo)
+        // 内存统计与原版一致：dumpsys meminfo 的 Total RAM / Free RAM
+        let memRaw = (await shellLines("dumpsys meminfo")).joined(separator: "\n")
+        parseMemInfo(memRaw)
 
-        // 先试带 RSS 的格式；失败再退回裸 ps
-        var rows = await shellLines("ps -A -o PID,USER,RSS,VSZ,STAT,NAME")
-        if !looksLikeValidPS(rows) {
-            rows = await shellLines("ps -A")
+        // 三列格式，兼容性最好
+        var psOut = await shellLines("ps -A -o PID,RSS,NAME")
+        if psOut.isEmpty || !looksValid(psOut) {
+            // 退一步：不带 -o（列不固定，只能尽力解析）
+            psOut = await shellLines("ps -A")
         }
-        let parsed = parsePS(rows)
 
+        let parsed = parsePS(psOut)
         if parsed.isEmpty {
-            errorMessage = "无法解析进程列表。设备可能限制 ps 输出，或 adb shell 未授权。"
+            errorMessage = "读不到应用进程。可能设备限制了 ps 输出，或当前是 root 受限环境。"
         }
-        processes = parsed
-        processCount = parsed.count
+        groups = groupByPackage(parsed)
+        killedMessage = nil
     }
 
-    private func looksLikeValidPS(_ rows: [String]) -> Bool {
-        guard let head = rows.first else { return false }
-        let h = head.lowercased()
-        return h.contains("pid") && (h.contains("rss") || h.contains("name"))
+    private func looksValid(_ rows: [String]) -> Bool {
+        guard let head = rows.first?.lowercased() else { return false }
+        // 表头应含 pid，且行数看起来合理
+        return head.contains("pid") && rows.count > 3
     }
 
     private func shellLines(_ cmd: String) async -> [String] {
@@ -95,168 +116,184 @@ final class ProcessStore: ObservableObject {
         }
     }
 
-    // MARK: - 内存汇总
+    // MARK: - 内存（对齐原版 extractMemValue）
 
-    private func parseMemInfo(_ lines: [String]) {
-        var total = 0.0
-        var avail = 0.0
-        for line in lines {
-            if line.hasPrefix("MemTotal:") { total = firstNumber(line) }
-            if line.hasPrefix("MemAvailable:") { avail = firstNumber(line) }
-        }
+    /// 原版：在 dumpsys meminfo 里找含 "Total RAM" / "Free RAM" 的行，
+    /// 取第一个数字串（去掉 , 和 .），单位是 KB。
+    private func parseMemInfo(_ raw: String) {
+        let total = extractMemValue(raw, key: "Total RAM")
+        let free = extractMemValue(raw, key: "Free RAM")
         guard total > 0 else { return }
-        totalMemoryText = fmtKB(total)
-        usedMemoryText = fmtKB(total - avail)
+
+        let used = total > free ? total - free : 0
+        totalMemoryText = fmtKB(Double(total))
+        usedMemoryText = fmtKB(Double(used))
+        freeMemoryText = fmtKB(Double(free))
+        memoryRatio = Double(used) / Double(total)
     }
 
-    private func firstNumber(_ line: String) -> Double {
-        for part in line.split(separator: " ") {
-            if let v = Double(part) { return v }
+    private func extractMemValue(_ raw: String, key: String) -> Int64 {
+        for line in raw.split(separator: "\n") {
+            guard line.lowercased().contains(key.lowercased()) else { continue }
+            // 取该行第一个数字串
+            let digits = line.split(whereSeparator: { !$0.isNumber && $0 != "," && $0 != "." })
+            if let first = digits.first {
+                let cleaned = first.replacingOccurrences(of: ",", with: "")
+                    .replacingOccurrences(of: ".", with: "")
+                if let v = Int64(cleaned) { return v }
+            }
         }
         return 0
     }
 
     private func fmtKB(_ kb: Double) -> String {
-        String(format: "%.1f GB", kb / 1048576.0)
+        if kb >= 1048576 { return String(format: "%.1f GB", kb / 1048576.0) }
+        return String(format: "%.0f MB", kb / 1024.0)
     }
 
-    // MARK: - PS 解析
+    // MARK: - PS 解析（对齐原版过滤条件）
 
-    /// 解析多种 ps 输出格式。
-    /// 常见三种：
-    ///   A) `  PID USER     RSS   VSZ STAT NAME`（带表头，最理想）
-    ///   B) `USER  PID ...`（老 busybox，user 在前）
-    ///   C) `u0_a123  1234  5678  123456  S  com.xxx`（无表头）
     private func parsePS(_ rows: [String]) -> [Proc] {
-        guard !rows.isEmpty else { return [] }
+        var out: [Proc] = []
+        for (index, row) in rows.enumerated() {
+            let t = row.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty else { continue }
+            // 跳过表头
+            if index == 0 && t.lowercased().contains("pid") { continue }
 
-        var startIndex = 0
-        var header: [String] = []
-        if let h = rows.first, h.lowercased().contains("pid") {
-            header = h.lowercased().split(separator: " ").map(String.init)
-            startIndex = 1
-        }
+            let parts = t.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard parts.count >= 3 else { continue }
 
-        var result: [Proc] = []
-        for row in rows[startIndex...] {
-            let cols = row.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-            guard cols.count >= 3 else { continue }
+            let name = parts.last ?? ""
+            // 原版关键过滤：必须含 "." 且不以 "/" 开头 → 只有 App 进程
+            guard name.contains("."), !name.hasPrefix("/") else { continue }
+            guard let pid = Int(parts[0]) else { continue }
 
-            if !header.isEmpty {
-                if let p = parseWithHeader(cols, header) {
-                    result.append(p)
-                }
-            } else if let p = parseWithoutHeader(cols) {
-                result.append(p)
+            // 三列格式：PID RSS NAME → parts[1] 是 RSS
+            // 非三列格式时，从中间列里找最大的数字当 RSS，找不到记 0
+            var rss = Int(parts[1]) ?? 0
+            if rss == 0, parts.count > 3 {
+                let candidates = parts[1..<(parts.count - 1)].compactMap { Int($0) }
+                rss = candidates.max() ?? 0
             }
-            if result.count >= maxRows { break }
+
+            let pkg = name.contains(":") ? String(name[..<name.firstIndex(of: ":")!]) : name
+
+            out.append(Proc(
+                pid: pid,
+                name: name,
+                packageName: pkg,
+                isMainProcess: name == pkg,
+                rssKB: rss
+            ))
         }
 
-        // 按 RSS 降序，最能看出谁吃内存
-        return result.sorted { $0.rssKB > $1.rssKB }
+        // 去重（某些 ROM 的 ps -A 会重复输出）
+        var seen = Set<Int>()
+        return out.filter { seen.insert($0.pid).inserted }
     }
 
-    private func parseWithHeader(_ cols: [String], _ header: [String]) -> Proc? {
-        func idx(_ name: String) -> Int? { header.firstIndex(of: name) }
-        guard let pidIdx = idx("pid"), pidIdx < cols.count,
-              let pid = Int(cols[pidIdx]) else { return nil }
-
-        let userIdx = idx("user")
-        let rssIdx = idx("rss")
-        let vszIdx = idx("vsz")
-        let statIdx = idx("stat") ?? idx("s")
-        // NAME 是最后一列；有些 ROM 叫 cmd 或 args
-        let nameIdx = idx("name") ?? idx("cmd") ?? idx("args")
-        let name = (nameIdx.map { $0 < cols.count ? cols[$0] : "" })
-            ?? (cols.last ?? "")
-
-        return Proc(
-            pid: pid,
-            user: userIdx.flatMap { $0 < cols.count ? cols[$0] : nil } ?? "-",
-            rssKB: rssIdx.flatMap { $0 < cols.count ? Int(cols[$0]) : nil } ?? 0,
-            vszKB: vszIdx.flatMap { $0 < cols.count ? Int(cols[$0]) : nil } ?? 0,
-            state: statIdx.flatMap { $0 < cols.count ? cols[$0] : nil } ?? "?",
-            name: name
-        )
+    /// 按包名聚合，主进程排前面
+    private func groupByPackage(_ procs: [Proc]) -> [Group] {
+        var map: [String: [Proc]] = [:]
+        for p in procs {
+            map[p.packageName, default: []].append(p)
+        }
+        return map.map { pkg, list in
+            Group(
+                packageName: pkg,
+                processes: list.sorted {
+                    if $0.isMainProcess != $1.isMainProcess { return $0.isMainProcess }
+                    return $0.rssKB > $1.rssKB
+                }
+            )
+        }
+        .sorted { $0.totalRssKB > $1.totalRssKB }
     }
 
-    /// 无表头：从右往左找，最后一个非数字列当名字
-    private func parseWithoutHeader(_ cols: [String]) -> Proc? {
-        guard let pid = cols.compactMap({ Int($0) }).first else { return nil }
-        let name = cols.last ?? ""
-        guard !name.isEmpty, Int(name) == nil else { return nil }
+    // MARK: - 结束进程（对齐原版：kill 而非 kill -9）
 
-        // 找连续的、像内存的数字
-        let nums = cols.compactMap { Int($0) }
-        let rss = nums.count >= 2 ? nums[1] : 0
-        let vsz = nums.count >= 3 ? nums[2] : 0
-
-        return Proc(
-            pid: pid,
-            user: cols.first ?? "-",
-            rssKB: rss,
-            vszKB: vsz,
-            state: "?",
-            name: name
-        )
-    }
-
-    // MARK: - 结束进程
-
-    /// 结束进程。返回 nil 表示成功，否则返回错误说明。
+    /// 原版 ProcessInfo.kt:703 用 `kill ${pid}`，即 SIGTERM。
+    /// 用 -9 会跳过进程的清理逻辑，某些守护进程还会被系统立刻拉起。
     func kill(_ proc: Proc) async -> String? {
         if isDemo {
-            // 演示模式只在本地移除，不碰真设备
-            processes.removeAll { $0.pid == proc.pid }
-            processCount = processes.count
+            removeLocally(proc.pid)
             killedMessage = "已结束 \(proc.name)（演示）"
             return nil
         }
 
-        let lines = await shellLines("kill -9 \(proc.pid) 2>&1")
+        let lines = await shellLines("kill \(proc.pid) 2>&1")
         let text = lines.joined(separator: " ").trimmingCharacters(in: .whitespaces)
-        if text.isEmpty || text.lowercased().contains("killed") {
-            processes.removeAll { $0.pid == proc.pid }
-            processCount = processes.count
-            killedMessage = "已结束 \(proc.name)"
-            // 复核是否真的没了
-            let check = await shellLines("ps -A -o PID | grep -w \(proc.pid)")
-            if !check.isEmpty {
-                return "命令已执行，但进程 \(proc.pid) 仍存在（可能被守护进程重启）"
-            }
-            return nil
+
+        if !text.isEmpty && (text.lowercased().contains("denied")
+                             || text.lowercased().contains("no such")) {
+            return "结束失败：\(text)"
         }
-        return text
+
+        // 复核：SIGTERM 后进程可能仍存活
+        let check = await shellLines("ps -A -o PID | grep -w \(proc.pid)")
+        if !check.isEmpty {
+            return "SIGTERM 已发送，但进程 \(proc.pid) 仍在。该进程可能忽略终止信号，需要强制结束。"
+        }
+        removeLocally(proc.pid)
+        killedMessage = "已结束 \(proc.name)"
+        return nil
     }
 
-    // MARK: - 演示数据
+    /// 强制结束（-9），用于上一步失败的情况
+    func forceKill(_ proc: Proc) async -> String? {
+        if isDemo {
+            removeLocally(proc.pid)
+            return nil
+        }
+        _ = await shellLines("kill -9 \(proc.pid) 2>&1")
+        let check = await shellLines("ps -A -o PID | grep -w \(proc.pid)")
+        if !check.isEmpty {
+            return "强制结束仍失败。进程可能被系统守护，或 adb shell 权限不足。"
+        }
+        removeLocally(proc.pid)
+        killedMessage = "已强制结束 \(proc.name)"
+        return nil
+    }
+
+    private func removeLocally(_ pid: Int) {
+        groups = groups.compactMap { g in
+            var p = g.processes
+            p.removeAll { $0.pid == pid }
+            guard !p.isEmpty else { return nil }
+            return Group(packageName: g.packageName, processes: p)
+        }
+    }
+
+    // MARK: - 演示
 
     private func loadDemo() {
         totalMemoryText = "3.9 GB"
         usedMemoryText = "2.4 GB"
+        freeMemoryText = "1.5 GB"
+        memoryRatio = 0.62
 
-        let demo: [(Int, String, Int, Int, String, String)] = [
-            (1, "root", 12800, 20480, "S", "init"),
-            (198, "root", 24576, 40960, "S", "zygote64"),
-            (245, "system", 287000, 512000, "S", "system_server"),
-            (312, "system", 96400, 160000, "S", "surfaceflinger"),
-            (388, "system", 41200, 88000, "S", "audioserver"),
-            (402, "root", 8600, 12000, "S", "logd"),
-            (455, "u0_a32", 186000, 320000, "S", "com.android.systemui"),
-            (512, "u0_a64", 342000, 580000, "S", "com.zzh.launcher50s"),
-            (588, "u0_a71", 128000, 240000, "S", "com.sgmw.keyless"),
-            (602, "u0_a88", 76400, 150000, "S", "com.android.settings"),
-            (655, "u0_a92", 52000, 98000, "S", "com.sgmw.carradio"),
-            (701, "u0_a95", 34800, 72000, "S", "com.sgmw.navi"),
-            (744, "u0_a101", 28900, 56000, "R", "top"),
-            (780, "shell", 11200, 18000, "S", "sh"),
+        let raw: [(Int, String, Int)] = [
+            (245, "system_server", 287000),
+            (512, "com.zzh.launcher50s", 342000),
+            (513, "com.zzh.launcher50s:remote", 46000),
+            (588, "com.sgmw.keyless", 128000),
+            (455, "com.android.systemui", 186000),
+            (602, "com.android.settings", 76400),
+            (655, "com.sgmw.carradio", 52000),
+            (701, "com.sgmw.navi", 148000),
+            (712, "com.sgmw.navi:service", 32000),
+            (744, "com.sgmw.voice", 36800),
+            (801, "com.jingos.mediacenter", 29400),
         ]
 
-        processes = demo.map {
-            Proc(pid: $0.0, user: $0.1, rssKB: $0.2, vszKB: $0.3,
-                 state: $0.4, name: $0.5)
-        }.sorted { $0.rssKB > $1.rssKB }
-        processCount = processes.count
+        let procs = raw.map { pid, name, rss in
+            Proc(pid: pid, name: name,
+                 packageName: name.contains(":") ? String(name[..<name.firstIndex(of: ":")!]) : name,
+                 isMainProcess: !name.contains(":"),
+                 rssKB: rss)
+        }
+        groups = groupByPackage(procs)
         errorMessage = nil
     }
 }

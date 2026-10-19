@@ -110,6 +110,36 @@ final class AppsStore: ObservableObject {
         apps = parsed.sorted { $0.package < $1.package }
     }
 
+    // MARK: - 强停 / 清数据（对齐原版）
+
+    /// 原版 AppManagerScreen.kt:798：`am force-stop <pkg>`
+    func forceStop(_ app: App) async -> String? {
+        busyMessage = "强停 \(app.displayName)…"
+        defer { busyMessage = nil }
+
+        if isDemo { return nil }
+
+        let lines = await shellLines("am force-stop \(app.package) 2>&1")
+        let text = lines.joined(separator: " ").lowercased()
+        if text.contains("error") || text.contains("permission") {
+            return "强停失败：\(lines.joined(separator: " "))"
+        }
+        return nil
+    }
+
+    /// 原版 AppManagerScreen.kt:869：`pm clear <pkg>`
+    func clearData(_ app: App) async -> String? {
+        busyMessage = "清除 \(app.displayName) 数据…"
+        defer { busyMessage = nil }
+
+        if isDemo { return nil }
+
+        let lines = await shellLines("pm clear \(app.package) 2>&1")
+        let text = lines.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        if text.contains("Success") { return nil }
+        return "清除失败：\(text.isEmpty ? "无回执" : text)"
+    }
+
     // MARK: - 卸载
 
     func uninstall(_ app: App, keepData: Bool = false) async -> String? {
