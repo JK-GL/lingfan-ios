@@ -1,0 +1,95 @@
+name: LingFan
+options:
+  bundleIdPrefix: com.lingfan
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    ENABLE_BITCODE: NO
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_CXX_LIBRARY: "libc++"
+
+targets:
+  LingFan:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+
+    sources:
+      - path: Sources
+      - path: Vendor/lib
+        buildPhase: none
+      - path: Vendor/include
+        buildPhase: none
+      - path: Resources
+        buildPhase: resources
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingfan.toolbox
+        PRODUCT_NAME: LingFan
+        INFOPLIST_FILE: Resources/Info.plist
+        MARKETING_VERSION: "0.5.21.281"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+        # ---- libadb 静态库链接 ----
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/lib"
+        OTHER_LDFLAGS:
+          - "-ladb-full"
+          - "-lc++"
+          - "-lz"
+          - "-lresolv"
+          - "-framework"
+          - "Foundation"
+          - "-framework"
+          - "Security"
+          - "-framework"
+          - "Network"
+
+        # libadb 里有大量 C++ 代码，必须允许 Objective-C++ 混编
+        CLANG_ENABLE_OBJC_ARC: YES
+        CLANG_ENABLE_MODULES: YES
+
+        # 静态库由上游代码构成，关闭部分严格告警，避免构建被 warning 阻塞
+        GCC_WARN_UNDECLARED_SELECTOR: NO
+        CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: 菱粉工具箱
+        CFBundleShortVersionString: "0.5.21.281"
+        CFBundleVersion: "1"
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Light
+        # 局域网发现需要本地网络权限说明
+        NSLocalNetworkUsageDescription: 用于发现并连接同一局域网内的车机与电视设备
+        NSBonjourServices:
+          - _adb._tcp
+          - _adb-tls-pairing._tcp
+          - _adb-tls-connect._tcp
+          - _lingfans-link._tcp
+        # 仅支持 iPhone 竖屏，但允许 iPad
+        UIRequiresFullScreen: true
+
+schemes:
+  LingFan:
+    build:
+      targets:
+        LingFan: all
+    run:
+      config: Debug
+    archive:
+      config: Release
