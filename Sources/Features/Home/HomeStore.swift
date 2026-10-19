@@ -265,22 +265,26 @@ final class HomeStore: ObservableObject {
         self.scanner = scanner
 
         scanner.start { [weak self] found in
-            guard let self else { return }
-            // 已在列表里的地址只更新状态，不重复插入
-            if let idx = self.devices.firstIndex(where: { $0.endpoint == found.endpoint }) {
-                if self.devices[idx].state == .offline {
-                    self.devices[idx].state = .online
+            // LanScanner 的回调在主线程触发，但签名无 actor 标注，
+            // 用 Task { @MainActor in } 显式回到 HomeStore 的隔离域。
+            Task { @MainActor in
+                guard let self else { return }
+                // 已在列表里的地址只更新状态，不重复插入
+                if let idx = self.devices.firstIndex(where: { $0.endpoint == found.endpoint }) {
+                    if self.devices[idx].state == .offline {
+                        self.devices[idx].state = .online
+                    }
+                    return
                 }
-                return
+                self.devices.append(DeviceRecord(
+                    id: DeviceRecord.stableID(serial: nil, endpoint: found.endpoint),
+                    name: found.name,
+                    endpoint: found.endpoint,
+                    state: .online,
+                    isLingFans: found.isLingFans,
+                    lastSeen: Date()
+                ))
             }
-            self.devices.append(DeviceRecord(
-                id: DeviceRecord.stableID(serial: nil, endpoint: found.endpoint),
-                name: found.name,
-                endpoint: found.endpoint,
-                state: .online,
-                isLingFans: found.isLingFans,
-                lastSeen: Date()
-            ))
         }
 
         // 最长等 Bonjour 窗口（5s），网段探测与广播都在此之前结束

@@ -8,11 +8,14 @@ import Network
 ///   2. Bonjour：`_adb-tls-connect._tcp` / `_adb-tls-pairing._tcp` / `_lingfans-link._tcp`，5s 窗口
 ///   3. UDP 监听：18687 端口接菱粉自定义广播，2.5s 窗口
 ///
-/// iOS 无需 Android 的 MulticastLock——那是为了对抗 Android 省电策略，iOS 的 Bonjour 是系统级服务。
-/// 首次使用会触发「本地网络」权限弹窗；用户拒绝后 Bonjour 与 UDP 都拿不到结果，
-/// 只剩网段探测仍可工作（纯 TCP connect，不需要广播权限）。
-@MainActor
-final class LanScanner: ObservableObject {
+/// iOS 无需 Android 的 MulticastLock——那是为了对抗 Android 省电策略。
+///
+/// 并发设计（重要）：
+///   全类不加 @MainActor。所有网络回调都在自己的队列上跑，
+///   只有"把结果交出去"这一步用 DispatchQueue.main.async 切回主线程。
+///   这样不需要在并发闭包里捕获 self，规避 Swift 5 严格并发检查的
+///   "reference to captured var 'self'" 错误，也避免 508 次探测压主线程。
+final class LanScanner {
 
     struct Found {
         let endpoint: String
@@ -40,16 +43,27 @@ final class LanScanner: ObservableObject {
         "_lingfans-link._tcp"
     ]
 
+    private let queue = DispatchQueue(label: "com.lingfan.lanscan", qos: .utility)
+
     private var browsers: [NWBrowser] = []
     private var listener: NWListener?
-    private var seen: Set<String> = []
-    private var onFound: ((Found) -> Void)?
+    private var connections: [NWConnection] = []
+    private var stopped = false
 
-    /// 开始扫描。结果通过 onFound 增量回调，扫完自动停止。
+    /// 主线程回调
+    private var onFound: ((Found) -> Void)?
+    /// 主线程去重表
+    private var seen: Set<String> = []
+
+    // 回调闭包声明成 nonisolated(unsafe) 没必要——本类无 actor 隔离，
+    // 所有可变状态只在 queue 或 main 上访问，由下面的 emit 串行化。
+
+    // MARK: - 生命周期
+
     func start(onFound: @escaping (Found) -> Void) {
-        stop()
         self.onFound = onFound
-        seen.removeAll()
+        self.seen = []
+        self.stopped = false
 
         startBonjour()
         startBroadcastListener()
@@ -60,11 +74,26 @@ final class LanScanner: ObservableObject {
     }
 
     func stop() {
+        stopped = true
         browsers.forEach { $0.cancel() }
         browsers.removeAll()
         listener?.cancel()
         listener = nil
+        connections.forEach { $0.cancel() }
+        connections.removeAll()
         onFound = nil
+    }
+
+    // MARK: - 结果汇聚（唯一的跨线程出口）
+
+    /// 任意线程调用，内部切主线程去重后回调
+    private func emit(_ found: Found) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            guard !self.seen.contains(found.endpoint) else { return }
+            self.seen.insert(found.endpoint)
+            self.onFound?(found)
+        }
     }
 
     // MARK: - ① 网段探测
@@ -73,7 +102,7 @@ final class LanScanner: ObservableObject {
     ///
     /// 直接用 sockaddr_in 取地址，不用 getnameinfo：
     /// 后者需要正确传 sa_len，而 ifa_addr 是 UnsafeMutablePointer<sockaddr>，
-    /// 在 Swift 里跨类型读长度容易踩坑；sockaddr_in 内存布局固定，更可靠。
+    /// 跨类型读长度容易踩坑；sockaddr_in 内存布局固定，更可靠。
     static func localIPv4Prefix() -> String? {
         var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddrPtr) == 0, let first = ifaddrPtr else { return nil }
@@ -84,16 +113,13 @@ final class LanScanner: ObservableObject {
             defer { addr = current.pointee.ifa_next }
 
             guard let saRaw = current.pointee.ifa_addr else { continue }
-            // sa_family 是 UInt8，AF_INET 是 Int32，必须统一到 Int32 再比
             guard Int32(saRaw.pointee.sa_family) == AF_INET else { continue }
 
-            // 必须有 IFF_UP，且不能是回环
             let flags = Int32(current.pointee.ifa_flags)
             guard (flags & IFF_UP) == IFF_UP else { continue }
             guard (flags & IFF_LOOPBACK) == 0 else { continue }
 
             let sin = saRaw.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
-            // sin_addr 是网络字节序
             var raw = sin.sin_addr.s_addr
             let bytes = withUnsafeBytes(of: &raw) { Array($0) }
             let ip = "\(bytes[0]).\(bytes[1]).\(bytes[2]).\(bytes[3])"
@@ -108,26 +134,21 @@ final class LanScanner: ObservableObject {
     }
 
     private func startSubnetProbe(prefix: String) {
-        // 508 次探测不能压在主线程上循环，整体丢到后台队列派发。
-        // onFound 是 @MainActor 属性，必须在主线程取出来再传进闭包，
-        // 否则后台队列访问会触发 actor 隔离编译错误。
-        let cb = onFound
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
+        // 508 次探测跑在专用队列，不占主线程
+        queue.async { [weak self] in
+            guard let self, !self.stopped else { return }
             for host in 1...254 {
                 for port in Self.probePorts {
+                    if self.stopped { return }
                     let endpoint = "\(prefix)\(host):\(port)"
-                    self.probe(endpoint: endpoint, port: port, onFound: cb)
+                    self.probe(endpoint: endpoint, port: port)
                 }
             }
         }
     }
 
     /// 单端口探测：只判断 TCP 能否建连，不发任何 ADB 数据
-    ///
-    /// nonisolated：508 个 NWConnection 绝不能跑在主线程上创建。
-    nonisolated private func probe(endpoint: String, port: UInt16,
-                                   onFound: ((Found) -> Void)?) {
+    private func probe(endpoint: String, port: UInt16) {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { return }
         let hostPart = endpoint.split(separator: ":").first.map(String.init) ?? ""
 
@@ -136,6 +157,7 @@ final class LanScanner: ObservableObject {
             port: nwPort,
             using: .tcp
         )
+        connections.append(conn)
 
         let timeout = DispatchWorkItem { conn.cancel() }
         DispatchQueue.global().asyncAfter(
@@ -144,28 +166,26 @@ final class LanScanner: ObservableObject {
         )
 
         conn.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
             switch state {
             case .ready:
                 timeout.cancel()
                 conn.cancel()
-                Task { @MainActor in
-                    self?.emit(
-                        Found(
-                            endpoint: endpoint,
-                            name: "ADB 设备",
-                            isLingFans: false,
-                            source: port == 5557 ? .probe5557 : .probe5555
-                        ),
-                        onFound: onFound
+                self.emit(
+                    Found(
+                        endpoint: endpoint,
+                        name: "ADB 设备",
+                        isLingFans: false,
+                        source: port == 5557 ? .probe5557 : .probe5555
                     )
-                }
+                )
             case .failed, .cancelled:
                 timeout.cancel()
             default:
                 break
             }
         }
-        conn.start(queue: .global(qos: .utility))
+        conn.start(queue: queue)
     }
 
     // MARK: - ② Bonjour
@@ -181,11 +201,10 @@ final class LanScanner: ObservableObject {
             )
 
             browser.browseResultsChangedHandler = { [weak self] results, _ in
+                guard let self else { return }
                 for result in results {
                     guard case let .service(name, _, _, _) = result.endpoint else { continue }
-                    Task { @MainActor in
-                        self?.resolveBonjour(name: name, type: type, endpoint: result.endpoint)
-                    }
+                    self.resolveBonjour(name: name, type: type, endpoint: result.endpoint)
                 }
             }
 
@@ -195,38 +214,33 @@ final class LanScanner: ObservableObject {
                 }
             }
 
-            browser.start(queue: .global(qos: .utility))
+            browser.start(queue: queue)
             browsers.append(browser)
         }
 
         // 到窗口时间统一收起
-        DispatchQueue.global().asyncAfter(deadline: .now() + Self.bonjourWindow) { [weak self] in
-            Task { @MainActor in
-                self?.browsers.forEach { $0.cancel() }
-                self?.browsers.removeAll()
-            }
+        queue.asyncAfter(deadline: .now() + Self.bonjourWindow) { [weak self] in
+            guard let self else { return }
+            self.browsers.forEach { $0.cancel() }
+            self.browsers.removeAll()
         }
     }
 
     /// Bonjour 只给服务名，真实 IP 必须真连一次才能拿到。
-    /// 这里用 NWConnection 到该服务，从 `.ready` 端点的 debugDescription 里解析出 IPv4。
+    /// 用 NWConnection 连上后从 currentPath.remoteEndpoint 取 IPv4。
     private func resolveBonjour(name: String, type: String, endpoint: NWEndpoint) {
         let conn = NWConnection(to: endpoint, using: .tcp)
-        var done = false
+        connections.append(conn)
 
-        let timeout = DispatchWorkItem {
-            if !done { done = true; conn.cancel() }
-        }
+        let timeout = DispatchWorkItem { conn.cancel() }
         DispatchQueue.global().asyncAfter(deadline: .now() + 2.0, execute: timeout)
 
         conn.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
             switch state {
             case .ready:
-                guard !done else { return }
-                done = true
                 timeout.cancel()
 
-                // currentPath 里能拿到远端地址
                 var host = ""
                 if let remote = conn.currentPath?.remoteEndpoint,
                    case let .hostPort(h, _) = remote {
@@ -239,25 +253,21 @@ final class LanScanner: ObservableObject {
                 guard !host.isEmpty else { return }
                 let isLingFans = type.contains("lingfans")
                 let port = isLingFans ? 5557 : 5555
-                Task { @MainActor in
-                    self?.emit(
-                        Found(
-                            endpoint: "\(host):\(port)",
-                            name: name,
-                            isLingFans: isLingFans,
-                            source: .bonjour
-                        ),
-                        onFound: self?.onFound
+                self.emit(
+                    Found(
+                        endpoint: "\(host):\(port)",
+                        name: name,
+                        isLingFans: isLingFans,
+                        source: .bonjour
                     )
-                }
+                )
             case .failed, .cancelled:
-                if !done { done = true }
                 timeout.cancel()
             default:
                 break
             }
         }
-        conn.start(queue: .global(qos: .utility))
+        conn.start(queue: queue)
     }
 
     // MARK: - ③ 菱粉 UDP 广播
@@ -275,14 +285,14 @@ final class LanScanner: ObservableObject {
         }
 
         l.newConnectionHandler = { [weak self] conn in
-            conn.start(queue: .global(qos: .utility))
+            guard let self else { return }
+            conn.start(queue: self.queue)
             conn.receiveMessage { data, _, _, _ in
                 guard let data, !data.isEmpty else { return }
-                Task { @MainActor in
-                    self?.parseBroadcast(data)
-                }
+                self.parseBroadcast(data)
                 conn.cancel()
             }
+            self.connections.append(conn)
         }
 
         l.stateUpdateHandler = { state in
@@ -291,19 +301,17 @@ final class LanScanner: ObservableObject {
             }
         }
 
-        l.start(queue: .global(qos: .utility))
+        l.start(queue: queue)
         listener = l
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + Self.broadcastWindow) { [weak self] in
-            Task { @MainActor in
-                self?.listener?.cancel()
-                self?.listener = nil
-            }
+        queue.asyncAfter(deadline: .now() + Self.broadcastWindow) { [weak self] in
+            self?.listener?.cancel()
+            self?.listener = nil
         }
     }
 
     /// 解析菱粉广播包。原版协议标识 `lf-link/1`。
-    /// 包体是文本形式，形如：`lf-link/1\napp=lingfans\nip=192.168.1.30\nport=5557\nname=xxx`
+    /// 包体形如：`lf-link/1\napp=lingfans\nip=192.168.1.30\nport=5557\nname=xxx`
     private func parseBroadcast(_ data: Data) {
         guard let text = String(data: data, encoding: .utf8) else { return }
         guard text.contains("lf-link/1") else { return }
@@ -332,18 +340,7 @@ final class LanScanner: ObservableObject {
                 name: name,
                 isLingFans: true,
                 source: .lingfansBroadcast
-            ),
-            onFound: onFound
+            )
         )
-    }
-
-    // MARK: - 去重
-
-    private func emit(_ found: Found, onFound: ((Found) -> Void)?) {
-        guard let onFound else { return }
-        // 按 endpoint 去重：同一台设备可能被三条路径都发现
-        guard !seen.contains(found.endpoint) else { return }
-        seen.insert(found.endpoint)
-        onFound(found)
     }
 }
