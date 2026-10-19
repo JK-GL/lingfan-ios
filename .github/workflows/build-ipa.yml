@@ -22,7 +22,7 @@ jobs:
       - name: 准备 Vendor 目录（下载 libadb 静态库）
         env:
           GH_TOKEN: ${{ secrets.LIBADB_TOKEN }}
-        run: ./scripts/fetch_libadb.sh
+        run: bash scripts/fetch_libadb.sh
 
       - name: 安装 XcodeGen
         run: |
@@ -53,10 +53,10 @@ jobs:
 
       - name: 汇总编译错误
         if: failure()
-        run: ./scripts/report_errors.sh
+        run: bash scripts/report_errors.sh
 
       - name: 打包为未签名 IPA
-        run: ./scripts/package_ipa.sh
+        run: bash scripts/package_ipa.sh
 
       - name: 上传 IPA
         uses: actions/upload-artifact@v4
