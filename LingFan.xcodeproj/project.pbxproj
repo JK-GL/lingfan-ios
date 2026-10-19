@@ -25,6 +25,7 @@
 			0DB48147E5CB5E763AD6703E /* AdbBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AdbBridge.h; path = Sources/Adb/AdbBridge.h; sourceTree = "<group>"; };
 			34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = AdbBridge.mm; path = Sources/Adb/AdbBridge.mm; sourceTree = "<group>"; };
 			BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdbService.swift; path = Sources/Adb/AdbService.swift; sourceTree = "<group>"; };
+			15FAF27E639728F3649AB0D9 /* LingFan-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = LingFan-Bridging-Header.h; path = Sources/App/LingFan-Bridging-Header.h; sourceTree = "<group>"; };
 			C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFanApp.swift; path = Sources/App/LingFanApp.swift; sourceTree = "<group>"; };
 			CD3E629F87518AEE2E1DCD26 /* MDColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MDColor.swift; path = Sources/DesignSystem/MDColor.swift; sourceTree = "<group>"; };
 			1C755AEB6A4B21839E9969A7 /* MDComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MDComponents.swift; path = Sources/DesignSystem/MDComponents.swift; sourceTree = "<group>"; };
@@ -53,6 +54,7 @@
 					0DB48147E5CB5E763AD6703E /* AdbBridge.h */,
 					34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */,
 					BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */,
+					15FAF27E639728F3649AB0D9 /* LingFan-Bridging-Header.h */,
 					C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */,
 					CD3E629F87518AEE2E1DCD26 /* MDColor.swift */,
 					1C755AEB6A4B21839E9969A7 /* MDComponents.swift */,
@@ -213,6 +215,7 @@
 					OTHER_LDFLAGS = ("-ladb-full", "-lc++", "-lz", "-lresolv", "-framework", "Security", "-framework", "Network");
 					PRODUCT_BUNDLE_IDENTIFIER = com.lingfan.toolbox;
 					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_OBJC_BRIDGING_HEADER = Sources/App/LingFan-Bridging-Header.h;
 					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				};
 				name = Debug;
@@ -233,6 +236,7 @@
 					OTHER_LDFLAGS = ("-ladb-full", "-lc++", "-lz", "-lresolv", "-framework", "Security", "-framework", "Network");
 					PRODUCT_BUNDLE_IDENTIFIER = com.lingfan.toolbox;
 					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_OBJC_BRIDGING_HEADER = Sources/App/LingFan-Bridging-Header.h;
 					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				};
 				name = Release;
