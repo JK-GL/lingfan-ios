@@ -102,7 +102,7 @@ final class ToolsStore: ObservableObject {
 
     /// 用 screenrecord 录到设备临时文件，停止后拉回本机。
     /// 原版命令：screenrecord --time-limit N /data/local/tmp/screen.mp4
-    func startRecording(maxSeconds: Int = 30) async {
+    func startRecording(maxSeconds: Int = 180) async {
         guard !recording else { return }
 
         if isDemo {
@@ -161,7 +161,7 @@ final class ToolsStore: ObservableObject {
         defer { busyMessage = nil }
 
         // screenrecord 响应 SIGINT 才会正常封盘
-        _ = await shellLines("pkill -INT screenrecord")
+        _ = await shellLines("pkill -2 screenrecord")
 
         let dir = FilesStore.localPullDirectory()
         let dest = dir.appendingPathComponent("lingfan_rec.mp4")
@@ -202,22 +202,110 @@ final class ToolsStore: ObservableObject {
         }
     }
 
-    // MARK: - 日志
+    // MARK: - 日志（持续抓取，对齐原版 ToolItem.kt toggleLogcat）
 
-    func loadLog(lines count: Int = 200) async {
-        running = true
+    @Published private(set) var isLogging = false
+    @Published private(set) var logSeconds = 0
+    @Published private(set) var lastLogPath: String?
+    private var logTimerTask: Task<Void, Never>?
+
+    var logDurationText: String {
+        String(format: "%02d:%02d", logSeconds / 60, logSeconds % 60)
+    }
+
+    func toggleLogging() async {
+        if isLogging {
+            _ = await stopLogging()
+        } else {
+            await startLogging()
+        }
+    }
+
+    /// 开始：先 logcat -c 清缓冲区，再后台挂 `logcat -f` 持续写设备文件。
+    /// 原版就是这么做的 —— 不是定时拉快照，而是一条长命令写到 stop 为止。
+    func startLogging() async {
+        guard !isLogging else { return }
         lastMessage = nil
-        defer { running = false }
+        logText = ""
 
         if isDemo {
-            logText = DemoContent.makeLog()
+            isLogging = true
+            logSeconds = 0
+            logTimerTask = Task { @MainActor [weak self] in
+                while let self, self.isLogging {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if Task.isCancelled { break }
+                    self.logSeconds += 1
+                }
+            }
             return
         }
 
-        let out = await shellLines("logcat -d -t \(count) 2>/dev/null")
-        logText = out.isEmpty
-            ? "没有读到日志。可能需要在车机上开启开发者选项的日志权限。"
-            : out.joined(separator: "\n")
+        _ = await shellLines("logcat -c")
+
+        // logcat -f 不会返回，必须放后台队列，否则界面直接卡死
+        let service = AdbService.shared
+        DispatchQueue.global(qos: .utility).async {
+            _ = service.run(["shell", "logcat -f /data/local/tmp/adblog.txt"])
+        }
+
+        isLogging = true
+        logSeconds = 0
+        logTimerTask = Task { @MainActor [weak self] in
+            while let self, self.isLogging {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { break }
+                self.logSeconds += 1
+            }
+        }
+        lastMessage = "开始抓取日志…"
+    }
+
+    /// 停止：pkill -2 让 logcat 刷盘 → pull 回本机 → 删设备文件 → 读前 10KB 预览。
+    @discardableResult
+    func stopLogging() async -> String? {
+        isLogging = false
+        logTimerTask?.cancel()
+        logTimerTask = nil
+
+        if isDemo {
+            logText = DemoContent.makeLog()
+            lastMessage = "演示模式未生成日志文件"
+            return nil
+        }
+
+        busyMessage = "停止并取回日志…"
+        defer { busyMessage = nil }
+
+        // -2 就是 SIGINT，logcat 收到后才会把缓冲区刷进文件
+        _ = await shellLines("pkill -2 -f 'logcat -f'")
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HHmmss"
+        let stamp = formatter.string(from: Date())
+
+        let dest = FilesStore.localPullDirectory()
+            .appendingPathComponent("log_\(stamp).txt")
+        try? FileManager.default.removeItem(at: dest)
+
+        _ = await runCommand(["pull", "/data/local/tmp/adblog.txt", dest.path])
+        _ = await shellLines("rm -f /data/local/tmp/adblog.txt")
+
+        guard FileManager.default.fileExists(atPath: dest.path) else {
+            lastMessage = "取回日志失败（设备上可能没生成文件）"
+            return nil
+        }
+
+        let raw = (try? String(contentsOf: dest, encoding: .utf8)) ?? ""
+        if raw.count > 10_000 {
+            logText = String(raw.prefix(10_000)) + "\n\n... (日志过长，仅展示前 10KB) ..."
+        } else {
+            logText = raw.isEmpty ? "日志是空的（可能 logcat -f 被 ROM 限制）" : raw
+        }
+        lastLogPath = dest.path
+        lastMessage = "日志已取回"
+        return dest.path
     }
 
     func clearLog() async {

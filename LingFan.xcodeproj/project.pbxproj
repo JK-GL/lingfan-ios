@@ -7,6 +7,7 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		08939A84D3431042B53AD829 /* InstallChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D87F511876693E352D485E /* InstallChannel.swift */; };
 		FC0BC6046CF0FC76390CF5CA /* MirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC73D6CC5ED728FF5E9020B /* MirrorView.swift */; };
 		DC22D5DF682739C7728BCC15 /* MirrorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E733C06BDE22E0FB61E0908 /* MirrorStore.swift */; };
 		9851D9916154FED80011A70A /* LinkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75C5E1BA081323E2475689B1 /* LinkView.swift */; };
@@ -39,6 +40,7 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		E4D87F511876693E352D485E /* InstallChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InstallChannel.swift; path = Sources/Features/Apps/InstallChannel.swift; sourceTree = "<group>"; };
 		DDC73D6CC5ED728FF5E9020B /* MirrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MirrorView.swift; path = Sources/Features/Mirror/MirrorView.swift; sourceTree = "<group>"; };
 		9E733C06BDE22E0FB61E0908 /* MirrorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MirrorStore.swift; path = Sources/Features/Mirror/MirrorStore.swift; sourceTree = "<group>"; };
 		75C5E1BA081323E2475689B1 /* LinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LinkView.swift; path = Sources/Features/Link/LinkView.swift; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					E4D87F511876693E352D485E /* InstallChannel.swift */,
 					DDC73D6CC5ED728FF5E9020B /* MirrorView.swift */,
 					9E733C06BDE22E0FB61E0908 /* MirrorStore.swift */,
 					75C5E1BA081323E2475689B1 /* LinkView.swift */,
@@ -206,6 +209,7 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					08939A84D3431042B53AD829 /* InstallChannel.swift in Sources */,
 					FC0BC6046CF0FC76390CF5CA /* MirrorView.swift in Sources */,
 					DC22D5DF682739C7728BCC15 /* MirrorStore.swift in Sources */,
 					9851D9916154FED80011A70A /* LinkView.swift in Sources */,

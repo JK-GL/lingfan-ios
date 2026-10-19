@@ -250,34 +250,57 @@ struct ToolsView: View {
     private var logCard: some View {
         MDCard {
             VStack(alignment: .leading, spacing: 12) {
-                cardTitle(icon: "doc.text.magnifyingglass", tint: MDColor.shell, title: "系统日志")
+                HStack(spacing: 8) {
+                    cardTitle(icon: "doc.text.magnifyingglass", tint: MDColor.shell, title: "系统日志")
+                    Spacer(minLength: 4)
+                    if store.isLogging {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(MDColor.process)
+                                .frame(width: 7, height: 7)
+                            Text(store.logDurationText)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(MDColor.process)
+                        }
+                    }
+                }
+
+                Text(store.isLogging
+                     ? "正在写入 /data/local/tmp/adblog.txt"
+                     : "点开始后持续抓取，停止时取回本机并预览前 10KB")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textSecondary)
 
                 HStack(spacing: 10) {
                     Button {
-                        Task {
-                            await store.loadLog()
-                            if !store.logText.isEmpty { showLog = true }
-                        }
+                        Task { await store.toggleLogging() }
                     } label: {
-                        Text(store.running ? "读取中…" : "读取最近 200 行")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(MDColor.shell)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(
-                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
-                                    .stroke(MDColor.shell.opacity(0.4), lineWidth: 1.2)
-                            )
+                        HStack(spacing: 6) {
+                            Image(systemName: store.isLogging ? "stop.fill" : "record.circle")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(store.isLogging ? "停止并取回" : "开始抓取")
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                        .foregroundStyle(store.isLogging ? MDColor.process : MDColor.shell)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                .stroke(
+                                    (store.isLogging ? MDColor.process : MDColor.shell).opacity(0.45),
+                                    lineWidth: 1.2
+                                )
+                        )
                     }
                     .buttonStyle(.plain)
-                    .disabled(store.running)
 
                     Button {
-                        Task { await store.clearLog() }
+                        showLog = true
                     } label: {
-                        Text("清空")
+                        Text("查看")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(MDColor.textSecondary)
+                            .foregroundStyle(store.logText.isEmpty
+                                             ? MDColor.textTertiary : MDColor.textSecondary)
                             .frame(width: 76, height: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
@@ -285,6 +308,7 @@ struct ToolsView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .disabled(store.logText.isEmpty)
                 }
             }
         }

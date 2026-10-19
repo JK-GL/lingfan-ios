@@ -56,6 +56,23 @@ struct FilesView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    if let clip = store.clipboardEntry {
+                        Button {
+                            Task { _ = await store.paste() }
+                        } label: {
+                            Label(
+                                "粘贴 \(clip.name)（\(store.clipboardIsCut ? "移动" : "复制")）",
+                                systemImage: "doc.on.clipboard"
+                            )
+                        }
+                        Button(role: .destructive) {
+                            store.clearClipboard()
+                        } label: {
+                            Label("取消剪贴板", systemImage: "xmark.circle")
+                        }
+                        Divider()
+                    }
+
                     Button {
                         nameInput = ""
                         showCreateFolder = true
@@ -244,6 +261,20 @@ struct FilesView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            Button {
+                store.setClipboard(entry, cut: false)
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                store.setClipboard(entry, cut: true)
+            } label: {
+                Label("剪切", systemImage: "scissors")
+            }
+
+            Divider()
+
             Button {
                 target = entry
                 nameInput = entry.name

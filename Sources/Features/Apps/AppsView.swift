@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 /// App 管理
 ///
@@ -13,6 +15,9 @@ struct AppsView: View {
     @State private var showUninstall = false
     @State private var actionError: String?
     @State private var shareURL: URL?
+    @State private var showImporter = false
+    @State private var showDetail = false
+    @State private var detailTarget: AppsStore.App?
 
     var body: some View {
         ZStack {
@@ -24,7 +29,7 @@ struct AppsView: View {
                 if let busy = store.busyMessage {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.8)
-                        Text(busy)
+                        Text(store.installProgress ?? busy)
                             .font(.system(size: 12))
                             .foregroundStyle(MDColor.textSecondary)
                         Spacer(minLength: 0)
@@ -54,6 +59,51 @@ struct AppsView: View {
         }
         .navigationTitle("App管理")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showImporter = true
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                Task {
+                    // 安全作用域访问：从「文件」App 选的文件需要 startAccessing
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+                    // 复制到沙箱，避免权限在异步途中失效
+                    let tmp = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(url.lastPathComponent)
+                    try? FileManager.default.removeItem(at: tmp)
+                    do {
+                        try FileManager.default.copyItem(at: url, to: tmp)
+                    } catch {
+                        actionError = "读取文件失败：\(error.localizedDescription)"
+                        return
+                    }
+                    if let err = await store.install(localPath: tmp.path) {
+                        actionError = err
+                    }
+                    try? FileManager.default.removeItem(at: tmp)
+                }
+            case .failure(let error):
+                actionError = "选择文件失败：\(error.localizedDescription)"
+            }
+        }
+        .sheet(isPresented: $showDetail) {
+            AppDetailSheet(text: store.detailText, isPresented: $showDetail)
+        }
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(MDColor.background, for: .navigationBar)
         .task {
@@ -179,6 +229,28 @@ struct AppsView: View {
                 Menu {
                     Button {
                         Task {
+                            if let err = await store.launch(app) {
+                                actionError = err
+                            }
+                        }
+                    } label: {
+                        Label("启动应用", systemImage: "play.circle")
+                    }
+
+                    Button {
+                        detailTarget = app
+                        Task {
+                            await store.loadDetail(app)
+                            showDetail = true
+                        }
+                    } label: {
+                        Label("查看详情", systemImage: "info.circle")
+                    }
+
+                    Divider()
+
+                    Button {
+                        Task {
                             if let err = await store.forceStop(app) {
                                 actionError = err
                             }
@@ -248,6 +320,45 @@ struct AppsView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(tint.opacity(0.12))
             )
+    }
+}
+
+// MARK: - 应用详情
+
+struct AppDetailSheet: View {
+    let text: String
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text.isEmpty ? "读取中…" : text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(MDColor.textPrimary)
+                        .textSelection(.enabled)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .navigationTitle("应用详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIPasteboard.general.string = text
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .foregroundStyle(MDColor.brand)
+                    }
+                }
+            }
+        }
     }
 }
 

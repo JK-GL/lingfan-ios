@@ -59,6 +59,11 @@ final class FilesStore: ObservableObject {
     /// 已下载到本机的文件，供分享/预览
     @Published private(set) var lastPulledLocalPath: String?
 
+    /// 剪贴板里待粘贴的条目（原版 clipboardFile）
+    @Published private(set) var clipboardEntry: Entry?
+    /// 剪贴板是剪切模式还是复制模式（原版 isCutMode）
+    @Published private(set) var clipboardIsCut = false
+
     /// 浏览历史，用于返回上级
     private(set) var history: [String] = []
 
@@ -152,8 +157,10 @@ final class FilesStore: ObservableObject {
             let perms = cols[0]
             guard let first = perms.first, "dl-cbps".contains(first) else { continue }
 
-            let isDir = first == "d"
             let isLink = first == "l"
+            // 对齐原版 parseRemoteFileLine：符号链接也当作目录。
+            // 它本身是另一个路径的入口，应该能点进去。
+            let isDir = first == "d" || isLink
             let size = Int64(cols[4]) ?? 0
             let dateText = "\(cols[5]) \(cols[6])"
             // 名称可能含空格，从第 8 列起全部拼回
@@ -311,6 +318,75 @@ final class FilesStore: ObservableObject {
             errorMessage = "改名失败：\(lines.joined(separator: " "))"
             return false
         }
+        await load()
+        return true
+    }
+
+    // MARK: - 复制 / 剪切 / 粘贴（原版 runPaste）
+
+    /// 把条目放进剪贴板。cut=true 是剪切，false 是复制。
+    func setClipboard(_ entry: Entry, cut: Bool) {
+        clipboardEntry = entry
+        clipboardIsCut = cut
+    }
+
+    func clearClipboard() {
+        clipboardEntry = nil
+        clipboardIsCut = false
+    }
+
+    /// 粘贴到当前目录。剪切用 mv，复制用 cp -r。
+    func paste() async -> Bool {
+        guard let source = clipboardEntry else {
+            errorMessage = "剪贴板是空的"
+            return false
+        }
+
+        let dest = currentPath.hasSuffix("/")
+            ? "\(currentPath)\(source.name)"
+            : "\(currentPath)/\(source.name)"
+
+        guard dest != source.path else {
+            errorMessage = "源和目标是同一个位置"
+            return false
+        }
+
+        if isDemo {
+            if clipboardIsCut {
+                entries.removeAll { $0.path == source.path }
+                clipboardEntry = nil
+            }
+            if !entries.contains(where: { $0.path == dest }) {
+                entries.insert(Entry(
+                    name: source.name, path: dest, isDir: source.isDir,
+                    sizeBytes: source.sizeBytes, permissions: source.permissions,
+                    dateText: "刚刚"
+                ), at: 0)
+            }
+            return true
+        }
+
+        busyMessage = clipboardIsCut ? "正在移动…" : "正在复制…"
+        defer { busyMessage = nil }
+
+        // 原版就是这么写的：不带 -p 保留属性，目录靠 -r 递归
+        let cmd = clipboardIsCut
+            ? "mv \"\(source.path)\" \"\(dest)\" 2>&1"
+            : "cp -r \"\(source.path)\" \"\(dest)\" 2>&1"
+
+        let lines = await shellLines(cmd)
+        let text = lines.joined(separator: " ").lowercased()
+
+        // cp / mv 成功时通常无输出；有输出基本都是错误
+        if text.contains("denied") || text.contains("read-only")
+            || text.contains("no such") || text.contains("failed")
+            || text.contains("not permitted") || text.contains("cross-device") {
+            errorMessage = (clipboardIsCut ? "移动失败：" : "复制失败：")
+                + lines.joined(separator: " ")
+            return false
+        }
+
+        if clipboardIsCut { clearClipboard() }
         await load()
         return true
     }

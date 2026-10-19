@@ -50,6 +50,14 @@ final class MirrorStore: ObservableObject {
         lastError = nil
         frameCount = 0
 
+        // 原版 ScreenMirrorScreen.kt:355 —— 投屏期间强制屏幕常亮，
+        // 否则车机熄屏后 screencap 拿到的是黑屏。
+        if !isDemo {
+            Task { [weak self] in
+                _ = await self?.shellLines("svc power stayon true")
+            }
+        }
+
         task = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -68,9 +76,17 @@ final class MirrorStore: ObservableObject {
     }
 
     func stop() {
+        let wasRunning = running
         task?.cancel()
         task = nil
         running = false
+
+        // 原版退出页面不恢复常亮，这里补上 —— 否则投屏看完车机永远不熄屏。
+        if wasRunning && !isDemo {
+            Task { [weak self] in
+                _ = await self?.shellLines("svc power stayon false")
+            }
+        }
     }
 
     // MARK: - 单帧

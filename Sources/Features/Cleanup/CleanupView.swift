@@ -2,16 +2,18 @@ import SwiftUI
 
 /// 存储清理
 ///
-/// 扫描可清理目录 → 勾选 → 清理 → 显示实际释放量。
-/// 清理后用 du 复核，不靠命令回执自吹。
+/// 三段式：过滤器建议 / 已卸载残留 / 大文件。
+/// 每项都能单独勾选，清理后用 du 复核实际释放量。
 struct CleanupView: View {
 
     let device: DeviceRecord
     @StateObject private var store = CleanupStore()
 
+    /// 选中的路径集合（跨三类共用）
     @State private var selected: Set<String> = []
     @State private var showConfirm = false
     @State private var resultMessage: String?
+    @State private var expandedSuggestion: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -24,21 +26,17 @@ struct CleanupView: View {
                     if let err = store.errorMessage {
                         noticeCard(err, tint: MDColor.warning)
                     }
-
                     if let msg = resultMessage {
                         noticeCard(msg, tint: MDColor.success)
                     }
 
                     if store.scanning {
-                        ProgressView("扫描中…")
-                            .padding(.vertical, 70)
-                    } else if store.targets.isEmpty {
-                        emptyState
+                        scanCard
                     } else {
-                        ForEach(store.targets) { target in
-                            targetRow(target)
-                        }
-                        actionBar
+                        suggestionSection
+                        corpseSection
+                        largeFileSection
+                        if hasAny { actionBar }
                     }
                 }
                 .padding(.horizontal, MDMetric.pagePadding)
@@ -59,18 +57,20 @@ struct CleanupView: View {
             Button("取消", role: .cancel) {}
             Button("清理", role: .destructive) {
                 Task {
-                    let freed = await store.clean(selected)
+                    let freed = await store.clean(paths: selected)
                     selected.removeAll()
-                    if freed > 0 {
-                        resultMessage = "已释放 \(fmt(freed))"
-                    } else {
-                        resultMessage = "没有释放空间（可能已被系统占用或权限不足）"
-                    }
+                    resultMessage = freed > 0
+                        ? "已释放 \(fmt(freed))"
+                        : "没有释放空间（可能权限不足或文件已被占用）"
                 }
             }
         } message: {
-            Text("将清空 \(selected.count) 个目录的内容，目录本身保留。\n应用缓存清理后，相关 App 可能需要重新加载数据。")
+            Text("将删除选中的 \(selected.count) 项，不可恢复。\n「大文件」里的内容会整文件删除，请确认不是需要保留的资料。")
         }
+    }
+
+    private var hasAny: Bool {
+        !store.suggestions.isEmpty || !store.corpses.isEmpty || !store.largeFiles.isEmpty
     }
 
     // MARK: - 概览
@@ -115,24 +115,29 @@ struct CleanupView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(MDColor.textTertiary)
-            Text(store.scanning ? "扫描中" : "没有可清理的目标")
-                .font(.system(size: 15))
-                .foregroundStyle(MDColor.textSecondary)
+    private var scanCard: some View {
+        MDCard {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text(store.scanStep.isEmpty ? "扫描中…" : store.scanStep)
+                    .font(.system(size: 13))
+                    .foregroundStyle(MDColor.textSecondary)
+                Text("逐个过滤器执行 find，车机上可能需要几十秒")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 70)
     }
 
     private func noticeCard(_ text: String, tint: Color) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill")
+            Image(systemName: tint == MDColor.success
+                  ? "checkmark.circle.fill" : "info.circle.fill")
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
+                .padding(.top, 1)
             Text(text)
                 .font(.system(size: 12))
                 .foregroundStyle(MDColor.textSecondary)
@@ -147,82 +152,240 @@ struct CleanupView: View {
         )
     }
 
-    // MARK: - 目标行
+    // MARK: - 过滤器建议
 
-    private func targetRow(_ target: CleanupStore.Target) -> some View {
-        let isOn = selected.contains(target.path)
+    private var suggestionSection: some View {
+        ForEach(store.suggestions) { s in
+            suggestionCard(s)
+        }
+    }
 
-        return Button {
-            if isOn { selected.remove(target.path) } else { selected.insert(target.path) }
-        } label: {
-            MDCard(padding: 12) {
+    private func suggestionCard(_ s: CleanupStore.Suggestion) -> some View {
+        let isExpanded = expandedSuggestion.contains(s.id)
+        let allSelected = !s.targets.isEmpty && s.targets.allSatisfy { selected.contains($0.path) }
+
+        return MDCard(padding: 12) {
+            VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 20))
-                        .foregroundStyle(isOn ? MDColor.brand : MDColor.textTertiary)
+                    Button {
+                        toggleAll(s.targets.map { $0.path }, select: !allSelected)
+                    } label: {
+                        Image(systemName: allSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20))
+                            .foregroundStyle(allSelected ? MDColor.brand : MDColor.textTertiary)
+                    }
+                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(target.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(MDColor.textPrimary)
-
-                            riskBadge(target.risk)
-                        }
-
-                        Text(target.detail)
-                            .font(.system(size: 11, design: .monospaced))
+                        Text(s.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(MDColor.textPrimary)
+                        Text("\(s.count) 项 · \(s.source)")
+                            .font(.system(size: 11))
                             .foregroundStyle(MDColor.textSecondary)
-                            .lineLimit(1)
                     }
 
                     Spacer(minLength: 4)
 
-                    Text(target.sizeText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(MDColor.textPrimary)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(s.totalText)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(MDColor.textPrimary)
+                        if s.count > 1 {
+                            Text(isExpanded ? "收起" : "展开")
+                                .font(.system(size: 11))
+                                .foregroundStyle(MDColor.brand)
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard s.count > 1 else { return }
+                    if isExpanded { expandedSuggestion.remove(s.id) }
+                    else { expandedSuggestion.insert(s.id) }
+                }
+
+                if isExpanded {
+                    VStack(spacing: 0) {
+                        Divider().background(MDColor.outlineVariant).padding(.vertical, 8)
+                        ForEach(s.targets) { t in
+                            targetRow(t.path, sizeText: t.sizeText)
+                        }
+                    }
                 }
             }
         }
-        .buttonStyle(.plain)
     }
 
-    private func riskBadge(_ risk: CleanupStore.Target.Risk) -> some View {
-        let tint = risk == .safe ? MDColor.success : MDColor.warning
-        return Text(risk.label)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(tint.opacity(0.12))
-            )
+    // MARK: - 已卸载残留
+
+    private var corpseSection: some View {
+        Group {
+            if !store.corpses.isEmpty {
+                MDCard(padding: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "app.badge.checkmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MDColor.app)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("已卸载应用残留")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(MDColor.textPrimary)
+                                Text("这些应用已卸载，但数据目录还占着空间")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(MDColor.textSecondary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        ForEach(store.corpses) { c in
+                            HStack(spacing: 10) {
+                                Button {
+                                    toggleAll([c.path], select: !selected.contains(c.path))
+                                } label: {
+                                    Image(systemName: selected.contains(c.path)
+                                          ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(selected.contains(c.path)
+                                                         ? MDColor.brand : MDColor.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(shortPkg(c.packageName))
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(MDColor.textPrimary)
+                                        .lineLimit(1)
+                                    Text(c.locationType)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(MDColor.textSecondary)
+                                }
+
+                                Spacer(minLength: 4)
+
+                                Text(c.sizeText)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(MDColor.process)
+                            }
+                            .padding(.vertical, 3)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 大文件
+
+    private var largeFileSection: some View {
+        Group {
+            if !store.largeFiles.isEmpty {
+                MDCard(padding: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "externaldrive.badge.exclamationmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MDColor.warning)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("大文件（>200 MB）")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(MDColor.textPrimary)
+                                Text("注意：这些是完整文件，不是缓存")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(MDColor.warning)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        ForEach(store.largeFiles) { f in
+                            HStack(spacing: 10) {
+                                Button {
+                                    toggleAll([f.path], select: !selected.contains(f.path))
+                                } label: {
+                                    Image(systemName: selected.contains(f.path)
+                                          ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(selected.contains(f.path)
+                                                         ? MDColor.brand : MDColor.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(f.name)
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(MDColor.textPrimary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Text((f.path as NSString).deletingLastPathComponent)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(MDColor.textSecondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.head)
+                                }
+
+                                Spacer(minLength: 4)
+
+                                Text(f.sizeText)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(MDColor.textPrimary)
+                            }
+                            .padding(.vertical, 3)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 行
+
+    private func targetRow(_ path: String, sizeText: String) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                toggleAll([path], select: !selected.contains(path))
+            } label: {
+                Image(systemName: selected.contains(path)
+                      ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(selected.contains(path) ? MDColor.brand : MDColor.textTertiary)
+            }
+            .buttonStyle(.plain)
+
+            Text(path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(MDColor.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.head)
+
+            Spacer(minLength: 4)
+
+            Text(sizeText)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(MDColor.textPrimary)
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - 操作栏
 
     private var actionBar: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button {
-                    if selected.count == store.targets.count {
-                        selected.removeAll()
-                    } else {
-                        selected = Set(store.targets.map { $0.path })
-                    }
-                } label: {
-                    Text(selected.count == store.targets.count ? "取消全选" : "全选")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(MDColor.brand)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
+            HStack {
                 Text("已选 \(selected.count) 项")
                     .font(.system(size: 12))
                     .foregroundStyle(MDColor.textSecondary)
+                Spacer()
+                if !selected.isEmpty {
+                    Button {
+                        selected.removeAll()
+                    } label: {
+                        Text("清空选择")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(MDColor.brand)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             MDPrimaryButton(
@@ -233,6 +396,21 @@ struct CleanupView: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    // MARK: - 工具
+
+    private func toggleAll(_ paths: [String], select: Bool) {
+        if select {
+            paths.forEach { selected.insert($0) }
+        } else {
+            paths.forEach { selected.remove($0) }
+        }
+    }
+
+    private func shortPkg(_ pkg: String) -> String {
+        let parts = pkg.split(separator: ".")
+        return parts.count > 2 ? parts.suffix(2).joined(separator: ".") : pkg
     }
 
     private func fmt(_ bytes: Int64) -> String {

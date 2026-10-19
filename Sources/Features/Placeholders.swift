@@ -45,6 +45,8 @@ struct InfoView: View {
                         infoRow("电量", info.batteryLevel.isEmpty
                                ? "—" : "\(info.batteryLevel)%")
                         infoRow("充电", info.isCharging ? "正在充电" : "未充电")
+                        infoRow("屏幕亮度", info.brightness.isEmpty ? "—" : info.brightness)
+                        infoRow("当前用户", info.currentUser.isEmpty ? "—" : info.currentUser)
                         if !info.thermalText.isEmpty {
                             infoRow("温度", info.thermalText)
                         }
@@ -147,6 +149,12 @@ struct InfoView: View {
             "dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp' | head -2"
         )
         d.currentFocus = focus
+
+        // 系统亮度（原版 DeviceFullInfo.kt:320）
+        d.brightness = await shell("settings get system screen_brightness")
+
+        // 当前活跃用户（原版 AppStartupManager.kt:207）
+        d.currentUser = await shell("am get-current-user")
 
         info = d
         loading = false

@@ -100,6 +100,10 @@ struct DeviceInfo {
     var thermalText: String = ""
     /// 当前前台 Activity / Package
     var currentFocus: String = ""
+    /// 系统亮度（settings get system screen_brightness，0~255）
+    var brightness: String = ""
+    /// 当前活跃用户（am get-current-user）
+    var currentUser: String = ""
 
     var displayName: String {
         let parts = [brand, model].filter { !$0.isEmpty }
