@@ -19,46 +19,10 @@ jobs:
       - name: 检出本仓库
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------------
-      # 拉取已编好的 libadb 静态库（由 JK-GL/libadb-ios 的 CI 产出）
-      # ---------------------------------------------------------------
-      - name: 准备 Vendor 目录
+      - name: 准备 Vendor 目录（下载 libadb 静态库）
         env:
           GH_TOKEN: ${{ secrets.LIBADB_TOKEN }}
-        run: |
-          set -e
-          mkdir -p Vendor/lib Vendor/include
-
-          # 优先走 artifact 接口；没有 token 时退回公共 release
-          ARTIFACT_ID=$(curl -sL \
-            -H "Authorization: token ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/JK-GL/libadb-ios/actions/artifacts?per_page=20" \
-            | /usr/bin/python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-for a in d.get('artifacts',[]):
-    if a['name']=='libadb-ios-arm64' and not a.get('expired'):
-        print(a['id']); break
-")
-
-          if [ -z "$ARTIFACT_ID" ]; then
-            echo "::error::找不到 libadb-ios-arm64 artifact"
-            exit 1
-          fi
-          echo "使用 artifact id = $ARTIFACT_ID"
-
-          curl -sL \
-            -H "Authorization: token ${GH_TOKEN}" \
-            "https://api.github.com/repos/JK-GL/libadb-ios/actions/artifacts/${ARTIFACT_ID}/zip" \
-            -o /tmp/libadb.zip
-
-          unzip -o /tmp/libadb.zip -d /tmp/libadb
-          cp -v /tmp/libadb/libadb-full.a Vendor/lib/
-          cp -Rv /tmp/libadb/include/* Vendor/include/ || true
-
-          echo "===== Vendor 内容 ====="
-          ls -la Vendor/lib Vendor/include
+        run: ./scripts/fetch_libadb.sh
 
       - name: 安装 XcodeGen
         run: |
@@ -89,26 +53,10 @@ for a in d.get('artifacts',[]):
 
       - name: 汇总编译错误
         if: failure()
-        run: |
-          echo "===== error 行 ====="
-          grep -nE "error:|fatal error|Undefined symbol" /tmp/build.log | head -40 || echo "无 error"
-          echo "===== 末尾 80 行 ====="
-          tail -80 /tmp/build.log
+        run: ./scripts/report_errors.sh
 
       - name: 打包为未签名 IPA
-        run: |
-          set -e
-          APP=$(find build/Build/Products/Debug-iphoneos -maxdepth 1 -name "*.app" | head -1)
-          echo "找到 app: $APP"
-          mkdir -p Payload
-          cp -R "$APP" Payload/
-          zip -qry "$APP_NAME-unsigned.ipa" Payload
-          ls -lh "$APP_NAME-unsigned.ipa"
-
-          echo "===== .app 内容抽查 ====="
-          ls -la Payload/*.app | head -20
-          echo "===== 是否含 libadb 符号 ====="
-          nm -gU "$APP/$(basename "$APP" .app)" 2>/dev/null | grep -c adb_commandline_porting || echo "0"
+        run: ./scripts/package_ipa.sh
 
       - name: 上传 IPA
         uses: actions/upload-artifact@v4
