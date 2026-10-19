@@ -1,0 +1,13 @@
+# Vendor 由 CI 动态填充，不入库（52MB 静态库不进 Git）
+Vendor/lib/*.a
+Vendor/include/*
+!Vendor/README.md
+
+# Xcode
+*.xcodeproj
+build/
+DerivedData/
+*.ipa
+
+# macOS
+.DS_Store
