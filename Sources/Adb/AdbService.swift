@@ -47,19 +47,40 @@ final class AdbService: ObservableObject {
     // MARK: - 连接管理
 
     /// 连接设备。endpoint 形如 "192.168.43.1:5557"
+    ///
+    /// 判定依据必须是 libadb 的真实回执（取自二进制字符串表）：
+    ///   connection requested to '%s'
+    ///   already connected to %s
+    ///   failed to authenticate to %s   ← 密钥被设备拒绝，需重新配对
+    ///   failed to connect to %s
+    ///   connected to %s
+    /// 注意 "failed to authenticate" 也含 "failed"，要单独区分出来给用户看得懂的提示。
     func connect(to endpoint: String, completion: @escaping (Bool, String) -> Void) {
         runAsync(["connect", endpoint]) { [weak self] result in
             let text = result.output
-            // adb connect 成功返回 "connected to ..." 或 "already connected to ..."，
-            // 返回码不一定是 0，所以按文本判定
-            let ok = text.contains("connected to") && !text.contains("failed")
+            let lower = text.lowercased()
+
+            let authFailed = lower.contains("failed to authenticate")
+            let ok = !authFailed
+                && (lower.contains("connected to ") || lower.contains("already connected to"))
+
             if ok {
                 self?.connectedEndpoint = endpoint
                 self?.lastError = nil
             } else {
-                self?.lastError = text.isEmpty ? "连接失败" : text
+                let message: String
+                if authFailed {
+                    message = "设备拒绝本机密钥（未完成配对）。请点「无线配对」重新配对后再连接。"
+                } else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    message = "连接失败：adb 无任何输出，通常是端口不对或设备未开启网络调试。"
+                } else {
+                    message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                self?.lastError = message
+                completion(false, message)
+                return
             }
-            completion(ok, text)
+            completion(true, text)
         }
     }
 

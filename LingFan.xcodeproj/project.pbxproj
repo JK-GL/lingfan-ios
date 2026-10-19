@@ -7,6 +7,8 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		500169440A98A640EC4B7F86 /* PairSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11A8071532BC2B24DF42E24 /* PairSheet.swift */; };
+		DFD967D552655E6F86AB618F /* LanScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF857EC19CAC32CC779FC19 /* LanScanner.swift */; };
 			E9879477F47B68A852A4C917 /* AdbBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */; };
 			1CEDCB3EDBA9BA95B09A7333 /* AdbService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */; };
 			094C39CF6539BBA7978B0597 /* LingFanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8DEC0DA06F2B1BE172337E2 /* LingFanApp.swift */; };
@@ -21,6 +23,8 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		E11A8071532BC2B24DF42E24 /* PairSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PairSheet.swift; path = Sources/Features/Home/PairSheet.swift; sourceTree = "<group>"; };
+		2FF857EC19CAC32CC779FC19 /* LanScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanScanner.swift; path = Sources/Features/Home/LanScanner.swift; sourceTree = "<group>"; };
 			DF56A81F6C35A89FD50C8B5E /* LingFan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LingFan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 			0DB48147E5CB5E763AD6703E /* AdbBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AdbBridge.h; path = Sources/Adb/AdbBridge.h; sourceTree = "<group>"; };
 			34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = AdbBridge.mm; path = Sources/Adb/AdbBridge.mm; sourceTree = "<group>"; };
@@ -62,6 +66,8 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					E11A8071532BC2B24DF42E24 /* PairSheet.swift */,
+					2FF857EC19CAC32CC779FC19 /* LanScanner.swift */,
 					36664063489A20543FE4632E /* Placeholders.swift */,
 					5FE1A2A656AC57BDB7A23DA0 /* DeviceRecord.swift */,
 					86024CAD1E83101D97359D73 /* Products */,
@@ -152,6 +158,8 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					500169440A98A640EC4B7F86 /* PairSheet.swift in Sources */,
+					DFD967D552655E6F86AB618F /* LanScanner.swift in Sources */,
 					BACC0992D5E0C96A11CC89A4 /* Placeholders.swift in Sources */,
 					FA7DF9CA817BDAE7242CC189 /* DeviceRecord.swift in Sources */,
 				);

@@ -10,3 +10,6 @@ DerivedData/
 *.xcuserdatad
 *.xcworkspace/xcuserdata/
 .DS_Store
+
+# 本地工具脚本，不入库
+scripts/push_fast.py

@@ -44,6 +44,26 @@ struct DeviceRecord: Identifiable, Hashable {
         return "endpoint:\(endpoint)"
     }
 
+    // MARK: - 演示模式
+
+    /// 演示专用 endpoint。ConsoleStore 见到它就不走 libadb，全部返回内置假数据。
+    /// 用 scheme 形式而非 ip:port，避免和真实地址撞车。
+    static let demoEndpoint = "demo://preview"
+
+    var isDemo: Bool { endpoint == DeviceRecord.demoEndpoint }
+
+    /// 一台虚构的车机，用于没有真机时预览控制台排版
+    static var demo: DeviceRecord {
+        DeviceRecord(
+            id: "demo:car",
+            name: "alps spm8666p2_64_car",
+            endpoint: demoEndpoint,
+            state: .connected,
+            isLingFans: true,
+            lastSeen: Date()
+        )
+    }
+
     /// 从 endpoint 拆出 IP 与端口
     var host: String {
         endpoint.split(separator: ":").first.map(String.init) ?? endpoint

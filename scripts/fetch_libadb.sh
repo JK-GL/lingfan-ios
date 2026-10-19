@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 从 JK-GL/libadb-ios 的 Actions artifact 中取回 libadb-full.a 与头文件
+# 从 iKingRepo/libadb-ios 的 Actions artifact 中取回 libadb-full.a 与头文件
 # 用法: GH_TOKEN=xxx ./scripts/fetch_libadb.sh
 set -euo pipefail
 
-REPO="JK-GL/libadb-ios"
+REPO="iKingRepo/libadb-ios"
 ARTIFACT="libadb-ios-arm64"
 DEST_LIB="Vendor/lib"
 DEST_INC="Vendor/include"

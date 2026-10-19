@@ -26,6 +26,7 @@ final class ConsoleStore: ObservableObject {
     // MARK: - 内部
 
     private var endpoint: String = ""
+    private var isDemo = false
     private var monitorTask: Task<Void, Never>?
     private let adb = AdbService.shared
 
@@ -34,12 +35,18 @@ final class ConsoleStore: ObservableObject {
     func bind(device: DeviceRecord) {
         endpoint = device.endpoint
         displayName = device.name
+        isDemo = device.isDemo
     }
 
     // MARK: - 监控循环
 
     func startMonitoring() async {
         stopMonitoring()
+
+        if isDemo {
+            startDemoLoop()
+            return
+        }
 
         // 首轮立刻读一次基础信息
         await refreshDeviceInfo()
@@ -51,6 +58,56 @@ final class ConsoleStore: ObservableObject {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3 秒一轮
                 if Task.isCancelled { break }
                 await self.tick()
+            }
+        }
+    }
+
+    // MARK: - 演示模式
+
+    /// 演示数据：全部本地生成，不触碰 libadb
+    private func startDemoLoop() {
+        displayName = "alps spm8666p2_64_car"
+        serial = "DEMO0000000001"
+        androidVersion = "9"
+
+        // 预填一段曲线，进页面就有形状，不用等 3 秒
+        var cpu: [Double] = []
+        var temp: [Double] = []
+        for i in 0..<40 {
+            let base = 0.34 + 0.16 * sin(Double(i) / 5.0)
+            let noise = Double(i % 7) * 0.012
+            cpu.append(max(0.05, min(0.92, base + noise)))
+            let t = 47.0 + 6.0 * sin(Double(i) / 8.0 + 1.2)
+            temp.append(min(1, max(0, t / 100.0)))
+        }
+        cpuSamples = cpu
+        tempSamples = temp
+        cpuUsage = cpu.last ?? 0
+        temperature = (temp.last ?? 0) * 100
+
+        memoryPercent = 0.61
+        memoryDetail = "2.4 GB / 3.9 GB"
+        storagePercent = 0.43
+        storageDetail = "13.9 GB / 32.0 GB"
+
+        monitorTask = Task { [weak self] in
+            guard let self else { return }
+            var i = 40
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if Task.isCancelled { break }
+                let base = 0.34 + 0.16 * sin(Double(i) / 5.0)
+                let noise = Double(i % 7) * 0.012
+                let v = max(0.05, min(0.92, base + noise))
+                let t = min(1, max(0, (47.0 + 6.0 * sin(Double(i) / 8.0 + 1.2)) / 100.0))
+                self.cpuUsage = v
+                self.temperature = t * 100
+                self.pushSample(v, toCPU: true)
+                self.pushSample(t, toCPU: false)
+                let mem = 0.55 + 0.08 * sin(Double(i) / 11.0)
+                self.memoryPercent = mem
+                self.memoryDetail = String(format: "%.1f GB / 3.9 GB", mem * 3.9)
+                i += 1
             }
         }
     }
@@ -84,6 +141,24 @@ final class ConsoleStore: ObservableObject {
         array.append(value)
         if array.count > maxSamples {
             array.removeFirst(array.count - maxSamples)
+        }
+    }
+
+    /// 只接收值、内部改属性。
+    /// 不能用 appendSample(&cpuSamples, v) 的形式：
+    /// inout 指向 self 的属性同时又通过 self 调方法，会触发
+    /// "Overlapping accesses to 'self'" 编译错误。
+    private func pushSample(_ value: Double, toCPU: Bool) {
+        if toCPU {
+            cpuSamples.append(value)
+            if cpuSamples.count > maxSamples {
+                cpuSamples.removeFirst(cpuSamples.count - maxSamples)
+            }
+        } else {
+            tempSamples.append(value)
+            if tempSamples.count > maxSamples {
+                tempSamples.removeFirst(tempSamples.count - maxSamples)
+            }
         }
     }
 
@@ -222,6 +297,7 @@ final class ConsoleStore: ObservableObject {
 
     func disconnect() async {
         stopMonitoring()
+        if isDemo { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             adb.disconnect(endpoint) { _ in
                 cont.resume()

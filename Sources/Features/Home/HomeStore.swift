@@ -27,6 +27,9 @@ final class HomeStore: ObservableObject {
     private let adb = AdbService.shared
     private let historyKey = "device.history"
 
+    /// 当前正在跑的扫描器，用于取消
+    private var scanner: LanScanner?
+
     // MARK: - 历史设备持久化
 
     /// 历史只存"曾经成功连过"的设备，用于断线后继续展示
@@ -118,28 +121,95 @@ final class HomeStore: ObservableObject {
                 isLingFans: info.isLingFans,
                 lastSeen: Date()
             ))
-            errorMessage = nil
+            if let warn = info.warning {
+                errorMessage = warn
+            } else {
+                errorMessage = nil
+            }
         } else {
             errorMessage = message
         }
     }
 
-    /// 连上后读取设备名与序列号，用于生成稳定主键
-    private func readIdentity(endpoint: String) async -> (name: String, serial: String, isLingFans: Bool) {
-        async let brandLines = adbShellLines("getprop ro.product.brand")
-        async let modelLines = adbShellLines("getprop ro.product.model")
-        async let serialLines = adbShellLines("getprop ro.serialno")
-        async let launcherLines = adbShellLines("pm list packages com.zzh.launcher50s")
+    private struct Identity {
+        var name: String
+        var serial: String
+        var isLingFans: Bool
+        /// 非致命提示（口令未解锁、身份读取失败等）
+        var warning: String?
+    }
 
-        let brand = (await brandLines).first ?? ""
-        let model = (await modelLines).first ?? ""
-        let serial = (await serialLines).first ?? ""
-        let launcher = await launcherLines
+    /// 星光L（F610S）等定制 ROM 的 adb 口令命令。
+    /// 对应原版 DeviceAdbLock.kt:30 的 XINGGUANG_L_PASSWORD_COMMAND。
+    private static let passwordCommand = "password:SGMW@@HQql2025pwd"
+
+    /// 连上后读取设备名与序列号，用于生成稳定主键
+    ///
+    /// 性能要点：四条 getprop 合并成一条 shell，避免 NSRecursiveLock 串行排队
+    /// 把首连延迟放大 4 倍。
+    private func readIdentity(endpoint: String) async -> Identity {
+        // 先探测身份，同时拿到 brand/model/serial，一次往返
+        let probe = await adbShellLines(
+            "id; getprop ro.product.brand; getprop ro.product.model; getprop ro.serialno"
+        )
+
+        var warning: String?
+
+        // 定制 ROM 要求口令时，shell 直接返回 "error: Please enter the password..."
+        let joined = probe.joined(separator: "\n").lowercased()
+        if joined.contains("please enter the password") {
+            let unlock = await adbShellLines(Self.passwordCommand)
+            let unlockText = unlock.joined(separator: "\n")
+            if unlockText.lowercased().contains("check password success") {
+                // 解锁成功，重新读一次属性
+                let retry = await adbShellLines(
+                    "id; getprop ro.product.brand; getprop ro.product.model; getprop ro.serialno"
+                )
+                return await buildIdentity(from: retry, warning: nil)
+            }
+            warning = "设备要求 ADB 口令，解锁未成功：\(unlockText.isEmpty ? "无回执" : unlockText)"
+            return Identity(name: endpoint, serial: "", isLingFans: false, warning: warning)
+        }
+
+        return await buildIdentity(from: probe, warning: warning)
+    }
+
+    /// 从 `id; getprop x3` 的输出里切出 uid / brand / model / serial
+    ///
+    /// 输出形如：
+    ///   uid=0(root) gid=0(root) ...
+    ///   alps
+    ///   spm8666p2_64_car
+    ///   ABCDEF012345
+    private func buildIdentity(from lines: [String], warning: String?) async -> Identity {
+        let uidLine = lines.first { $0.hasPrefix("uid=") } ?? ""
+        let rest = lines.filter { !$0.hasPrefix("uid=") }
+
+        let brand = rest.count > 0 ? rest[0] : ""
+        let model = rest.count > 1 ? rest[1] : ""
+        let serial = rest.count > 2 ? rest[2] : ""
 
         let name = [brand, model].filter { !$0.isEmpty }.joined(separator: " ")
-        let isLingFans = launcher.contains { $0.contains("com.zzh.launcher50s") }
 
-        return (name.isEmpty ? endpoint : name, serial, isLingFans)
+        // 菱粉桌面包名探测放后台，不阻塞设备入列
+        let isLingFans = await detectLingFans()
+
+        var warn = warning
+        if uidLine.isEmpty && warn == nil {
+            warn = "非 root 身份（\(uidLine.isEmpty ? "未取到 id 输出" : uidLine)），部分功能可能受限"
+        }
+
+        return Identity(
+            name: name.isEmpty ? "未知设备" : name,
+            serial: serial,
+            isLingFans: isLingFans,
+            warning: warn
+        )
+    }
+
+    private func detectLingFans() async -> Bool {
+        let lines = await adbShellLines("pm list packages com.zzh.launcher50s")
+        return lines.contains { $0.contains("com.zzh.launcher50s") }
     }
 
     private func adbShellLines(_ command: String) async -> [String] {
@@ -181,19 +251,66 @@ final class HomeStore: ObservableObject {
 
     /// 扫描局域网内的 ADB 设备
     ///
-    /// iOS 侧没有 NsdManager，改用两种手段：
-    ///   1. 本机网段 /24 全段探测 5555 / 5557 / 5556
-    ///   2. 后续可加 NWBrowser 找 `_adb._tcp` 与 `_lingfans-link._tcp`
+    /// 三条路径并行（对应原版 LanScanner.kt）：
+    ///   1. 本机网段 /24 × 5555/5557 端口探测，700ms 单次超时
+    ///   2. Bonjour：_adb-tls-connect / _adb-tls-pairing / _lingfans-link，5s 窗口
+    ///   3. UDP 18687 接菱粉自定义广播，2.5s 窗口
+    /// 结果增量回调，边扫边出。
     func scan() async {
+        guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
 
-        // TODO: 接入 LanScanner（NWBrowser + 端口探测）
-        // 先留空，等协议层验证通过后再补
+        let scanner = LanScanner()
+        self.scanner = scanner
+
+        scanner.start { [weak self] found in
+            guard let self else { return }
+            // 已在列表里的地址只更新状态，不重复插入
+            if let idx = self.devices.firstIndex(where: { $0.endpoint == found.endpoint }) {
+                if self.devices[idx].state == .offline {
+                    self.devices[idx].state = .online
+                }
+                return
+            }
+            self.devices.append(DeviceRecord(
+                id: DeviceRecord.stableID(serial: nil, endpoint: found.endpoint),
+                name: found.name,
+                endpoint: found.endpoint,
+                state: .online,
+                isLingFans: found.isLingFans,
+                lastSeen: Date()
+            ))
+        }
+
+        // 最长等 Bonjour 窗口（5s），网段探测与广播都在此之前结束
+        try? await Task.sleep(nanoseconds: 5_500_000_000)
+        scanner.stop()
+        self.scanner = nil
+        persistHistory()
     }
 
-    /// 刷新：重连已记录的在线设备并更新状态
+    /// 刷新：先校验历史设备在线状态，再触发扫描
     func refresh() async {
+        await verifyHistory()
         await scan()
+    }
+
+    /// 用 adb devices 校验历史设备是否还在线
+    private func verifyHistory() async {
+        guard !devices.isEmpty else { return }
+        let serials = await withCheckedContinuation {
+            (cont: CheckedContinuation<[String], Never>) in
+            adb.listDevices { cont.resume(returning: $0) }
+        }
+        for i in devices.indices {
+            let stillOnline = serials.contains { serial in
+                serial == devices[i].endpoint
+                    || devices[i].endpoint.hasSuffix(serial)
+                    || serial.contains(devices[i].host)
+            }
+            devices[i].state = stillOnline ? .connected : .offline
+        }
+        persistHistory()
     }
 }

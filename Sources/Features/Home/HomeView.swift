@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
 
     @StateObject private var store = HomeStore()
+    @State private var showDemo = false
 
     var body: some View {
         NavigationStack {
@@ -21,6 +22,14 @@ struct HomeView: View {
 
                         // 顶部标题行：左标题 / 右版本
                         header
+
+                        // 演示入口：不连真机也能预览控制台
+                        demoEntry
+
+                        // 连接错误提示
+                        if let error = store.errorMessage {
+                            errorBanner(error)
+                        }
 
                         // 添加设备卡片
                         addDeviceCard
@@ -44,6 +53,14 @@ struct HomeView: View {
             .navigationDestination(for: DeviceRecord.self) { device in
                 ConsoleView(device: device)
             }
+            .navigationDestination(isPresented: $showDemo) {
+                ConsoleView(device: DeviceRecord.demo)
+            }
+        }
+        .sheet(isPresented: $store.showPairSheet) {
+            PairSheet(isPresented: $store.showPairSheet) { host in
+                store.inputHost = host
+            }
         }
         .task {
             await store.loadHistory()
@@ -66,6 +83,92 @@ struct HomeView: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    // MARK: - 演示入口
+
+    /// 预览控制台排版用。数据全部本地生成，不连接任何设备。
+    private var demoEntry: some View {
+        Button {
+            showDemo = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(MDColor.brand)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("预览控制台")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(MDColor.textPrimary)
+                    Text("使用演示数据，不连接真实设备")
+                        .font(.system(size: 12))
+                        .foregroundStyle(MDColor.textSecondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(MDColor.textTertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(MDColor.brand.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(MDColor.brand.opacity(0.20), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 错误横幅
+
+    /// 连接失败时把 adb 的原始回执展示出来，否则用户点完按钮什么都看不到。
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MDColor.danger)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("连接失败")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(MDColor.danger)
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(MDColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 4)
+
+            Button {
+                store.errorMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(MDColor.textTertiary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(MDColor.danger.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(MDColor.danger.opacity(0.22), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - 添加设备卡
