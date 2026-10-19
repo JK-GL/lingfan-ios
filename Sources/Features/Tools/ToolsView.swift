@@ -23,6 +23,7 @@ struct ToolsView: View {
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
+                    mirrorCard
                     screenshotCard
                     recordCard
                     topWindowCard
@@ -88,6 +89,37 @@ struct ToolsView: View {
         } message: {
             Text("车机将立即执行 `\(pendingReboot.command)`。\n重启期间连接会中断，需要重新连接。")
         }
+    }
+
+    // MARK: - 设备镜像
+
+    /// 原版把它放在常用工具第一项（ToolItem.kt:448 附近），不是控制台一级入口
+    private var mirrorCard: some View {
+        NavigationLink {
+            MirrorView(device: device)
+        } label: {
+            MDCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    cardTitle(icon: "airplayvideo", tint: MDColor.info, title: "设备镜像")
+
+                    Text("实时查看车机画面，投屏期间自动保持屏幕常亮")
+                        .font(.system(size: 11))
+                        .foregroundStyle(MDColor.textSecondary)
+
+                    HStack(spacing: 6) {
+                        Text("打开镜像")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(MDColor.info)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(MDColor.textTertiary)
+                    }
+                    .frame(height: 24)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 截图

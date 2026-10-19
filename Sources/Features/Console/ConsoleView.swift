@@ -191,9 +191,14 @@ struct ConsoleView: View {
 
     // MARK: - 功能入口
 
+    /// 菱粉联动只在菱粉机型上出现（原版 `if (lingFansMeta.isLingFans)`）
+    private var visibleFeatures: [ConsoleFeature] {
+        ConsoleFeature.allCases.filter { $0 != .link || device.isLingFans }
+    }
+
     private var functionList: some View {
         VStack(spacing: MDMetric.cardSpacing) {
-            ForEach(ConsoleFeature.allCases) { feature in
+            ForEach(visibleFeatures) { feature in
                 NavigationLink {
                     feature.destination(device: device)
                 } label: {
@@ -214,9 +219,12 @@ struct ConsoleView: View {
 
 // MARK: - 功能定义
 
-/// 与 Android 版 `DeviceControlScreen.kt` 的入口列表一一对应
+/// 与 Android 版 `DeviceControlScreen.kt:137-150` 的入口列表一一对应。
+/// 顺序也照抄：菱粉联动条件置顶 → 设备信息 → Shell → 文件 → App
+/// → 存储清理 → 进程 → 虚拟遥控 → 常用工具。
+/// 原版没有「设备投屏」一级入口，设备镜像在「常用工具」里。
 enum ConsoleFeature: String, CaseIterable, Identifiable {
-    case info, shell, files, apps, process, remote, tools, mirror, link, cleanup
+    case link, info, shell, files, apps, cleanup, process, remote, tools
 
     var id: String { rawValue }
 
@@ -229,7 +237,6 @@ enum ConsoleFeature: String, CaseIterable, Identifiable {
         case .process: return "进程管理"
         case .remote: return "虚拟遥控"
         case .tools: return "常用工具"
-        case .mirror: return "设备投屏"
         case .link: return "菱粉联动"
         case .cleanup: return "存储清理"
         }
@@ -243,8 +250,7 @@ enum ConsoleFeature: String, CaseIterable, Identifiable {
         case .apps: return "安装、卸载、提取 APK、冻结"
         case .process: return "监控运行内存、结束卡死进程"
         case .remote: return "模拟按键、遥控器、输入文字"
-        case .tools: return "一键截图、重启设备、投屏"
-        case .mirror: return "实时投屏并控制设备"
+        case .tools: return "截图、录屏、镜像、日志与电源"
         case .link: return "语音、图标、天气与日志定制"
         case .cleanup: return "扫描并清理设备冗余文件"
         }
@@ -259,7 +265,6 @@ enum ConsoleFeature: String, CaseIterable, Identifiable {
         case .process: return "cpu.fill"
         case .remote: return "av.remote.fill"
         case .tools: return "wrench.adjustable.fill"
-        case .mirror: return "airplayvideo"
         case .link: return "car.fill"
         case .cleanup: return "trash.fill"
         }
@@ -274,7 +279,6 @@ enum ConsoleFeature: String, CaseIterable, Identifiable {
         case .process: return MDColor.process
         case .remote: return MDColor.remote
         case .tools: return MDColor.tool
-        case .mirror: return MDColor.info
         case .link: return MDColor.brand
         case .cleanup: return MDColor.process
         }
@@ -290,7 +294,6 @@ enum ConsoleFeature: String, CaseIterable, Identifiable {
         case .process:  ProcessView(device: device)
         case .remote:   RemoteView(device: device)
         case .tools:    ToolsView(device: device)
-        case .mirror:   MirrorView(device: device)
         case .link:     LinkView(device: device)
         case .cleanup:  CleanupView(device: device)
         }
