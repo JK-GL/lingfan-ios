@@ -15,7 +15,7 @@ struct ProcessView: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
@@ -96,7 +96,7 @@ struct ProcessView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(MDColor.background)
+                            .fill(MDColor.surfaceHigh)
                             .frame(height: 8)
                         Capsule()
                             .fill(
@@ -139,10 +139,10 @@ struct ProcessView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                 .fill(MDColor.warning.opacity(0.08))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                         .stroke(MDColor.warning.opacity(0.22), lineWidth: 1)
                 )
         )
@@ -201,7 +201,7 @@ struct ProcessView: View {
                                 .padding(.vertical, 1)
                                 .background(
                                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(MDColor.background)
+                                        .fill(MDColor.surfaceHigh)
                                 )
                         }
                     }

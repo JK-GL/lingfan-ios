@@ -22,7 +22,7 @@ struct PairSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MDColor.background.ignoresSafeArea()
+                MDPageBackground()
 
                 ScrollView {
                     VStack(spacing: MDMetric.cardSpacing) {
@@ -94,8 +94,8 @@ struct PairSheet: View {
                         .padding(.horizontal, 12)
                         .frame(height: 46)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MDColor.background)
+                            RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                .fill(MDColor.surfaceHigh)
                         )
                     Text("注意：这是配对端口，不是 5557")
                         .font(.system(size: 11))
@@ -113,8 +113,8 @@ struct PairSheet: View {
                         .padding(.horizontal, 12)
                         .frame(height: 52)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MDColor.background)
+                            RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                .fill(MDColor.surfaceHigh)
                         )
                 }
 
@@ -146,10 +146,10 @@ struct PairSheet: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                 .fill(tint.opacity(0.07))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                         .stroke(tint.opacity(0.22), lineWidth: 1)
                 )
         )

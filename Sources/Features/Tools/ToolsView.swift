@@ -17,7 +17,7 @@ struct ToolsView: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
@@ -79,9 +79,9 @@ struct ToolsView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(maxHeight: 180)
                             .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
                                     .stroke(MDColor.textTertiary.opacity(0.25), lineWidth: 1)
                             )
                     }
@@ -129,8 +129,8 @@ struct ToolsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(MDColor.background)
+                        RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                            .fill(MDColor.surfaceHigh)
                     )
             }
         }
@@ -156,7 +156,7 @@ struct ToolsView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                             .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
                                     .stroke(MDColor.shell.opacity(0.4), lineWidth: 1.2)
                             )
                     }
@@ -171,7 +171,7 @@ struct ToolsView: View {
                             .foregroundStyle(MDColor.textSecondary)
                             .frame(width: 76, height: 44)
                             .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
                                     .stroke(MDColor.textTertiary.opacity(0.5), lineWidth: 1.2)
                             )
                     }
@@ -204,7 +204,7 @@ struct ToolsView: View {
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 46)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
                                         .fill((mode == .shutdown || mode == .bootloader
                                                ? MDColor.danger : MDColor.process).opacity(0.08))
                                 )
@@ -239,7 +239,7 @@ struct LogSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MDColor.background.ignoresSafeArea()
+                MDPageBackground()
                 ScrollView([.vertical, .horizontal]) {
                     Text(text)
                         .font(.system(size: 11, design: .monospaced))

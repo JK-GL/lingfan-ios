@@ -15,7 +15,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MDColor.background.ignoresSafeArea()
+                MDPageBackground()
 
                 ScrollView {
                     VStack(spacing: MDMetric.cardSpacing) {
@@ -115,10 +115,10 @@ struct HomeView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                     .fill(MDColor.brand.opacity(0.06))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                             .stroke(MDColor.brand.opacity(0.20), lineWidth: 1)
                     )
             )
@@ -162,10 +162,10 @@ struct HomeView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                 .fill(MDColor.danger.opacity(0.07))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
                         .stroke(MDColor.danger.opacity(0.22), lineWidth: 1)
                 )
         )

@@ -15,7 +15,7 @@ struct ConsoleView: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
@@ -116,8 +116,8 @@ struct ConsoleView: View {
                 )
                 .frame(height: 150)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(MDColor.background)
+                    RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                        .fill(MDColor.surfaceHigh)
                 )
             }
         }
@@ -169,7 +169,7 @@ struct ConsoleView: View {
 
                 ZStack {
                     Circle()
-                        .stroke(MDColor.background, lineWidth: 12)
+                        .stroke(MDColor.surfaceHigh, lineWidth: 12)
                     Circle()
                         .trim(from: 0, to: max(0.001, percent))
                         .stroke(tint, style: StrokeStyle(lineWidth: 12, lineCap: .round))

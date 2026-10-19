@@ -113,7 +113,7 @@ struct ShellView: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
 
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
@@ -134,8 +134,8 @@ struct ShellView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(12)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(MDColor.surface)
+                                    RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                        .fill(MDColor.surfaceHigh)
                                 )
                                 .id(entry.id)
                             }
@@ -159,8 +159,8 @@ struct ShellView: View {
                         .padding(.horizontal, 12)
                         .frame(height: 42)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MDColor.surface)
+                            RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                .fill(MDColor.surfaceHigh)
                         )
 
                     Button {
@@ -174,7 +174,7 @@ struct ShellView: View {
                 }
                 .padding(.horizontal, MDMetric.pagePadding)
                 .padding(.vertical, 10)
-                .background(MDColor.background)
+                .background(MDColor.surfaceHigh)
             }
         }
         .navigationTitle("Shell执行")
@@ -249,7 +249,7 @@ struct PlaceholderPage: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
             VStack(spacing: 14) {
                 MDIconTile(systemName: icon, tint: tint, size: 72, radius: 20)
                 Text(title)

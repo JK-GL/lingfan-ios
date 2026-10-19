@@ -66,7 +66,7 @@ struct RemoteView: View {
 
     var body: some View {
         ZStack {
-            MDColor.background.ignoresSafeArea()
+            MDPageBackground()
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
@@ -111,8 +111,8 @@ struct RemoteView: View {
                         .padding(.horizontal, 12)
                         .frame(height: 44)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(MDColor.background)
+                            RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                .fill(MDColor.surfaceHigh)
                         )
 
                     Button {
@@ -123,7 +123,7 @@ struct RemoteView: View {
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
                                     .fill(command.isEmpty ? MDColor.textTertiary : MDColor.remote)
                             )
                     }
@@ -180,7 +180,7 @@ struct RemoteView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
                     .fill(MDColor.remote.opacity(0.07))
             )
         }
@@ -195,11 +195,11 @@ struct RemoteView: View {
             Spacer()
             Text(text)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(MDColor.background)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
-                    Capsule().fill(Color.black.opacity(0.78))
+                    Capsule().fill(MDColor.textPrimary.opacity(0.92))
                 )
                 .padding(.bottom, 40)
         }
