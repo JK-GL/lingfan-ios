@@ -1,10 +1,30 @@
 #import "AdbBridge.h"
-#import "adb_public.h"
 
-#import <stdlib.h>
+// 注意：这里刻意不 #include "adb_public.h"。
+//
+// 原因有两个：
+// 1. 它在声明 C 函数时没有 extern "C" 保护，在 .mm 里会被按 C++ 规则
+//    做名字修饰，链接时报 Undefined symbols（实测已复现）。
+// 2. 它里面的 adb_set_home / adb_set_server_port / adb_enable_trace 是
+//    static inline，只能在头文件所在翻译单元展开。
+//
+// 所以这里用 extern "C" 显式声明自己需要的 3 个真正导出符号，
+// setenv 那几行在 ObjC 里直接自己写，等价且更可控。
+
+#include <stdlib.h>
+
+extern "C" {
+/// 执行一条 adb 命令，输出写入 output_buffer（realloc 分配，调用方负责 free）
+int adb_commandline_porting(char **output_buffer,
+                            size_t *output_buffer_size,
+                            int argc,
+                            const char **argv);
+
+/// 初始化 adb trace 子系统
+void adb_trace_init_porting(char **argv);
+}
 
 // libadb 在 C 层会调用这个弱符号上报连接状态变化。
-// 用 weak 声明，即使库里没有引用也不会链接失败。
 __attribute__((weak)) void adb_connect_status_updated(const char *serial, const char *status);
 
 // ---------------------------------------------------------------------------
@@ -32,8 +52,8 @@ __attribute__((weak)) void adb_connect_status_updated(const char *serial, const 
 @property (nonatomic, copy, readwrite) NSString *serverPort;
 @property (nonatomic, assign, readwrite) BOOL initialized;
 /// libadb 的 C 接口不是线程安全的，所有调用必须串行化。
-/// 这里用 NSRecursiveLock 而不是 os_unfair_lock：后者作为 ivar 时
-/// 结构体地址可能随对象移动而变化，属于未定义行为。
+/// 用 NSRecursiveLock 而非 os_unfair_lock：后者作为 ivar 时
+/// 结构体地址可能随对象移动而变化，属未定义行为。
 @property (nonatomic, strong) NSRecursiveLock *lock;
 @end
 
@@ -65,8 +85,7 @@ __attribute__((weak)) void adb_connect_status_updated(const char *serial, const 
             return;
         }
 
-        // 1) 证书与私钥落盘目录：App 的 Documents。
-        //    libadb 会在 HOME 下写 .android/adbkey，目录必须预先存在。
+        // 证书与私钥落盘：libadb 会在 HOME 下写 .android/adbkey
         NSArray<NSString *> *documents = NSSearchPathForDirectoriesInDomains(
             NSDocumentDirectory, NSUserDomainMask, YES);
         NSString *home = documents.firstObject;
@@ -81,12 +100,10 @@ __attribute__((weak)) void adb_connect_status_updated(const char *serial, const 
                                                    attributes:nil
                                                         error:NULL];
 
-        // adb_set_home / adb_set_server_port 在 adb_public.h 里是 static inline，
-        // 由本文件展开为 setenv 调用，不会出现在 .a 的符号表里。
-        adb_set_home(home.UTF8String);
-        adb_set_server_port(self.serverPort.UTF8String);
+        // 等价于 adb_public.h 里的 static inline adb_set_home / adb_set_server_port
+        setenv("HOME", home.UTF8String, 1);
+        setenv("ANDROID_ADB_SERVER_PORT", self.serverPort.UTF8String, 1);
 
-        // 2) trace 只初始化一次，重复调用会重复注册 looper
         const char *traceArgv[] = { "adb" };
         adb_trace_init_porting((char **)traceArgv);
 
@@ -116,8 +133,8 @@ __attribute__((weak)) void adb_connect_status_updated(const char *serial, const 
                 argv[i] = [arguments[(NSUInteger)i] UTF8String];
             }
 
-            // 每次调用必须是全新的 buffer：
-            // capture_printf 内部用 realloc 追加写入，复用会串上一次输出；
+            // 每次调用必须是全新 buffer：
+            // capture_printf 用 realloc 追加写入，复用会串上一次输出；
             // 不复用又不 free 会内存泄漏。
             char *output = NULL;
             size_t outputSize = 0;
@@ -128,8 +145,6 @@ __attribute__((weak)) void adb_connect_status_updated(const char *serial, const 
             if (output != NULL && outputSize > 0) {
                 text = [NSString stringWithUTF8String:output] ?: @"";
             }
-
-            // 这块内存由 libadb 的 realloc 分配，必须由调用方释放
             if (output != NULL) {
                 free(output);
             }
