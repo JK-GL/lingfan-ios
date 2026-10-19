@@ -64,6 +64,7 @@
 					762227FD596691B77FDCF45E /* Features */,
 					DA06836122790A2DF0BF5B97 /* Models */,
 				);
+				name = Sources;
 				path = Sources;
 				sourceTree = "<group>";
 			};
