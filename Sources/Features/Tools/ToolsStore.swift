@@ -315,6 +315,125 @@ final class ToolsStore: ObservableObject {
         lastMessage = "日志已清空"
     }
 
+    // MARK: - 性能监控（对齐原版 ToolItem.kt startPerfMonitor）
+
+    @Published private(set) var perfRunning = false
+    @Published private(set) var cpuHistory: [Double] = Array(repeating: 0, count: 30)
+    @Published private(set) var ramHistory: [Double] = Array(repeating: 0, count: 30)
+    @Published private(set) var cpuPercent: Double = 0
+    @Published private(set) var ramUsedMB: Int64 = 0
+    @Published private(set) var ramTotalMB: Int64 = 0
+
+    private var perfTask: Task<Void, Never>?
+    private var prevCPUTotal: Double = 0
+    private var prevCPUIdle: Double = 0
+
+    var ramPercent: Double {
+        guard ramTotalMB > 0 else { return 0 }
+        return Double(ramUsedMB) / Double(ramTotalMB) * 100
+    }
+
+    /// 原版：进入时把两条曲线都填成 30 个 0，之后每帧左移一格。
+    func startPerfMonitor() {
+        guard !perfRunning else { return }
+        perfRunning = true
+        cpuHistory = Array(repeating: 0, count: 30)
+        ramHistory = Array(repeating: 0, count: 30)
+        prevCPUTotal = 0
+        prevCPUIdle = 0
+
+        if isDemo {
+            perfTask = Task { @MainActor [weak self] in
+                var phase = 0.0
+                while let self, self.perfRunning {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if Task.isCancelled { break }
+                    phase += 0.28
+                    let cpu = max(1, min(99, 32 + sin(phase) * 15 + Double.random(in: -3...3)))
+                    let ram = max(5, min(95, 56 + cos(phase * 0.7) * 8))
+                    self.cpuPercent = cpu
+                    self.ramTotalMB = 7802
+                    self.ramUsedMB = Int64(Double(7802) * ram / 100)
+                    self.shiftHistory(cpu: cpu, ram: ram)
+                }
+            }
+            return
+        }
+
+        perfTask = Task { @MainActor [weak self] in
+            while let self, self.perfRunning {
+                await self.samplePerfOnce()
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    func stopPerfMonitor() {
+        perfRunning = false
+        perfTask?.cancel()
+        perfTask = nil
+    }
+
+    private func shiftHistory(cpu: Double, ram: Double) {
+        if !cpuHistory.isEmpty { cpuHistory.removeFirst() }
+        cpuHistory.append(cpu)
+        if !ramHistory.isEmpty { ramHistory.removeFirst() }
+        ramHistory.append(ram)
+    }
+
+    /// 一次采样：CPU 走 /proc/stat 两次差值，内存走 /proc/meminfo。
+    /// 两条命令合并成一次 shell，省一个往返。
+    private func samplePerfOnce() async {
+        let lines = await shellLines(
+            "cat /proc/stat | head -n 1; cat /proc/meminfo | grep -E '^(MemTotal|MemAvailable):'"
+        )
+        guard !lines.isEmpty else { return }
+
+        var cpuUsage = 0.0
+        var totalKB: Int64 = 0
+        var availKB: Int64 = 0
+
+        for raw in lines {
+            let t = raw.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("cpu") {
+                let parts = t.split(separator: " ", omittingEmptySubsequences: true)
+                guard parts.count >= 5 else { continue }
+                func v(_ i: Int) -> Double {
+                    guard i < parts.count, let d = Double(parts[i]) else { return 0 }
+                    return d
+                }
+                let total = v(1) + v(2) + v(3) + v(4) + v(5) + v(6) + v(7)
+                let idle = v(4) + v(5)
+                if prevCPUTotal > 0 {
+                    let dt = total - prevCPUTotal
+                    let di = idle - prevCPUIdle
+                    if dt > 0 { cpuUsage = max(0, min(100, (dt - di) / dt * 100)) }
+                }
+                prevCPUTotal = total
+                prevCPUIdle = idle
+            } else if t.hasPrefix("MemTotal") {
+                totalKB = Self.firstNumber(t)
+            } else if t.hasPrefix("MemAvailable") {
+                availKB = Self.firstNumber(t)
+            }
+        }
+
+        if totalKB > 0 {
+            let usedKB = max(0, totalKB - availKB)
+            ramTotalMB = totalKB / 1024
+            ramUsedMB = usedKB / 1024
+        }
+        cpuPercent = cpuUsage
+        shiftHistory(cpu: cpuUsage, ram: ramPercent)
+    }
+
+    /// 从 `MemTotal:  7991234 kB` 里取第一个数字
+    private static func firstNumber(_ line: String) -> Int64 {
+        guard let r = line.range(of: #"\d+"#, options: .regularExpression) else { return 0 }
+        return Int64(line[r]) ?? 0
+    }
+
     // MARK: - 设备状态快照
 
     func loadSnapshot() async {

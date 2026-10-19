@@ -14,6 +14,7 @@ struct ToolsView: View {
     @State private var pendingReboot: ToolsStore.RebootMode = .normal
     @State private var showLog = false
     @State private var showShot = false
+    @State private var showPerf = false
     @State private var videoURL: URL?
 
     var body: some View {
@@ -25,6 +26,7 @@ struct ToolsView: View {
                     screenshotCard
                     recordCard
                     topWindowCard
+                    perfCard
                     snapshotCard
                     logCard
                     powerCard
@@ -66,6 +68,9 @@ struct ToolsView: View {
         }
         .sheet(isPresented: $showShot) {
             ScreenshotSheet(image: store.screenshot, isPresented: $showShot)
+        }
+        .sheet(isPresented: $showPerf) {
+            PerfSheet(store: store, isPresented: $showPerf)
         }
         .sheet(isPresented: Binding(
             get: { videoURL != nil },
@@ -214,6 +219,40 @@ struct ToolsView: View {
     }
 
     // MARK: - 状态快照
+
+    // MARK: - 性能监控
+
+    private var perfCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 12) {
+                cardTitle(icon: "speedometer", tint: MDColor.file, title: "性能监控")
+
+                Text("每秒采样 CPU 与内存，弹窗内实时画波形")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textSecondary)
+
+                Button {
+                    store.startPerfMonitor()
+                    showPerf = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("打开实时监控")
+                            .font(.system(size: 15, weight: .medium))
+                    }
+                    .foregroundStyle(MDColor.file)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                            .stroke(MDColor.file.opacity(0.4), lineWidth: 1.2)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
     private var snapshotCard: some View {
         MDCard {
@@ -437,6 +476,163 @@ struct ScreenshotSheet: View {
                 }
             }
             .toolbarBackground(.black, for: .navigationBar)
+        }
+    }
+}
+
+// MARK: - 性能监控面板
+
+struct PerfSheet: View {
+    @ObservedObject var store: ToolsStore
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+
+                ScrollView {
+                    VStack(spacing: MDMetric.cardSpacing) {
+                        HStack(spacing: 12) {
+                            metricTile(
+                                "CPU",
+                                value: "\(Int(store.cpuPercent))%",
+                                tint: MDColor.info
+                            )
+                            metricTile(
+                                "内存",
+                                value: String(format: "%.0f%%", store.ramPercent),
+                                tint: MDColor.tool
+                            )
+                        }
+
+                        MDCard {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("最近 30 秒")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(MDColor.textPrimary)
+
+                                PerfChart(cpu: store.cpuHistory, ram: store.ramHistory)
+                                    .frame(height: 170)
+
+                                HStack(spacing: 16) {
+                                    legend(MDColor.info, "CPU")
+                                    legend(MDColor.tool, "内存")
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+
+                        MDCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("明细")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(MDColor.textPrimary)
+                                row("CPU 占用", "\(Int(store.cpuPercent))%")
+                                row("已用内存", "\(store.ramUsedMB) MB")
+                                row("总内存", store.ramTotalMB > 0 ? "\(store.ramTotalMB) MB" : "—")
+                            }
+                        }
+
+                        Text("数据来源：/proc/stat 与 /proc/meminfo")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MDColor.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
+                    .padding(.horizontal, MDMetric.pagePadding)
+                    .padding(.top, 8)
+                    .padding(.bottom, 32)
+                }
+            }
+            .navigationTitle("实时性能监控")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MDColor.background, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+        }
+        .onDisappear { store.stopPerfMonitor() }
+    }
+
+    private func metricTile(_ title: String, value: String, tint: Color) -> some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(MDColor.textSecondary)
+                Text(value)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint)
+            }
+        }
+    }
+
+    private func legend(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(MDColor.textSecondary)
+        }
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(MDColor.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(MDColor.textPrimary)
+        }
+    }
+}
+
+/// 双线百分比折线（0~100），CPU 与内存共用一套坐标
+struct PerfChart: View {
+    let cpu: [Double]
+    let ram: [Double]
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+
+            ZStack(alignment: .topLeading) {
+                // 0 / 25 / 50 / 75 / 100 网格
+                ForEach(0..<5, id: \.self) { i in
+                    let y = h * CGFloat(i) / 4
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: y))
+                        p.addLine(to: CGPoint(x: w, y: y))
+                    }
+                    .stroke(MDColor.outlineVariant, lineWidth: 0.6)
+                }
+
+                line(cpu, width: w, height: h)
+                    .stroke(MDColor.info, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+
+                line(ram, width: w, height: h)
+                    .stroke(MDColor.tool, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+
+    private func line(_ values: [Double], width: CGFloat, height: CGFloat) -> Path {
+        Path { p in
+            guard values.count > 1 else { return }
+            let stepX = width / CGFloat(values.count - 1)
+            for (i, v) in values.enumerated() {
+                let ratio = min(max(v, 0), 100) / 100
+                let pt = CGPoint(x: CGFloat(i) * stepX, y: height * (1 - CGFloat(ratio)))
+                if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+            }
         }
     }
 }
