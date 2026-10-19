@@ -24,15 +24,12 @@ jobs:
           GH_TOKEN: ${{ secrets.LIBADB_TOKEN }}
         run: bash scripts/fetch_libadb.sh
 
-      - name: 安装 XcodeGen
+      - name: 校验工程文件
         run: |
-          brew install xcodegen
-          xcodegen --version
-
-      - name: 生成 Xcode 工程
-        run: |
-          xcodegen generate
-          ls -la
+          test -f LingFan.xcodeproj/project.pbxproj || { echo "::error::工程文件缺失"; exit 1; }
+          grep -q "objectVersion = 56" LingFan.xcodeproj/project.pbxproj && echo "objectVersion 56 ✅"
+          grep -q "compatibilityVersion" LingFan.xcodeproj/project.pbxproj && echo "compatibilityVersion ✅"
+          ls -la LingFan.xcodeproj
 
       - name: 编译 Debug 版 .app
         run: |
