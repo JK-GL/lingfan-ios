@@ -5,6 +5,11 @@ options:
     iOS: "16.0"
   createIntermediateGroups: true
   groupSortPosition: top
+  # macos-14 runner 用 Xcode 15.4，只支持 objectVersion <= 60。
+  # 新版 XcodeGen 默认生成 77（Xcode 16 格式），xcodebuild 会报
+  # "Unable to read project"，必须显式钉住。
+  xcodeVersion: "15.4"
+  objectVersion: 60
 
 settings:
   base:
@@ -28,7 +33,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lingfan.toolbox
         PRODUCT_NAME: LingFan
-        INFOPLIST_FILE: Resources/Info.plist
         MARKETING_VERSION: "0.5.21.281"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"
