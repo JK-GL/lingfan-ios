@@ -70,31 +70,26 @@ struct InfoView: View {
 
     private func load() async {
         let adb = AdbService.shared
-        func shell(_ c: String) async -> String {
+
+        @Sendable func shell(_ c: String) async -> String {
             await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
-                adb.shellLines(c) { cont.resume(returning: $0.first ?? "") }
+                adb.shellLines(c) { lines in
+                    cont.resume(returning: lines.first ?? "")
+                }
             }
         }
-        async let brand = shell("getprop ro.product.brand")
-        async let model = shell("getprop ro.product.model")
-        async let sn = shell("getprop ro.serialno")
-        async let ver = shell("getprop ro.build.version.release")
-        async let sdk = shell("getprop ro.build.version.sdk")
-        async let size = shell("wm size")
-        async let density = shell("wm density")
-        async let cpu = shell("getprop ro.board.platform")
-        async let storage = shell("df -h /data 2>/dev/null | tail -1")
 
+        // 顺序读取，避免 async let 在 MainActor 上的隔离冲突
         var d = DeviceInfo()
-        d.brand = await brand
-        d.model = await model
-        d.serial = await sn
-        d.androidVersion = await ver
-        d.sdk = await sdk
-        d.resolution = (await size).replacingOccurrences(of: "Physical size: ", with: "")
-        d.density = (await density).replacingOccurrences(of: "Physical density: ", with: "")
-        d.cpuInfo = await cpu
-        d.totalStorage = await storage
+        d.brand = await shell("getprop ro.product.brand")
+        d.model = await shell("getprop ro.product.model")
+        d.serial = await shell("getprop ro.serialno")
+        d.androidVersion = await shell("getprop ro.build.version.release")
+        d.sdk = await shell("getprop ro.build.version.sdk")
+        d.resolution = (await shell("wm size")).replacingOccurrences(of: "Physical size: ", with: "")
+        d.density = (await shell("wm density")).replacingOccurrences(of: "Physical density: ", with: "")
+        d.cpuInfo = await shell("getprop ro.board.platform")
+        d.totalStorage = await shell("df -h /data 2>/dev/null | tail -1")
 
         info = d
         loading = false
