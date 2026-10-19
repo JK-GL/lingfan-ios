@@ -10,8 +10,10 @@ DEST_INC="Vendor/include"
 
 mkdir -p "$DEST_LIB" "$DEST_INC"
 
-if [[ -z "${GH_TOKEN:-}" ]]; then
-  echo "::error::缺少 GH_TOKEN，无法访问 artifact（私有/过期产物需要认证）"
+# token 允许两种来源：显式 secret，或仓库自带的 GITHUB_TOKEN
+GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [[ -z "${GH_TOKEN}" ]]; then
+  echo "::error::缺少 token。请在仓库 Secrets 里配置 LIBADB_TOKEN，或确保 GITHUB_TOKEN 可用"
   exit 1
 fi
 
