@@ -183,6 +183,33 @@ final class FilesStore: ObservableObject {
     /// drwxrwx--x  4 root sdcard_rw  4096 2026-10-20 01:23 Android
     /// -rw-rw----  1 root sdcard_rw 4120000 2026-10-19 20:01 bootanimation.zip
     /// lrwxrwxrwx  1 root root           8 2026-10-01 10:00 sdcard -> /storage/self/primary
+    /// 判断一列是否是 `HH:MM` 或 `HH:MM:SS` 形式的时间。
+    ///
+    /// 为什么不用正则：列目录时每一行都要判断一次，`NSRegularExpression`
+    /// 每次都要构造 range，几千个文件会明显拖慢。这里直接扫 UTF-8 字节。
+    /// 关键点：绝不能用「4 位数字」判断年份 —— Android 上目录大小默认就是
+    /// 4096，会把时间列定位到「大小」列，导致名称被拼成
+    /// "2026-10-20 01:23 Android"，进而拼出不存在的路径。
+    private static func isClockToken(_ s: String) -> Bool {
+        let bytes = Array(s.utf8)
+        guard bytes.count >= 4, bytes.count <= 8 else { return false }
+        var colons = 0
+        var segment = 0
+        for b in bytes {
+            if b == UInt8(ascii: ":") {
+                guard segment > 0 else { return false }
+                colons += 1
+                segment = 0
+            } else if b >= UInt8(ascii: "0"), b <= UInt8(ascii: "9") {
+                segment += 1
+                if segment > 2 { return false }
+            } else {
+                return false
+            }
+        }
+        return (colons == 1 || colons == 2) && segment > 0
+    }
+
     private func parseLS(_ lines: [String], parent: String) -> [Entry] {
         var out: [Entry] = []
         let parentPath = (parent.hasSuffix("/") && parent != "/") ? String(parent.dropLast()) : parent
@@ -214,13 +241,14 @@ final class FilesStore: ObservableObject {
             let isLink = first == "l"
             let isDir = first == "d" || isLink
 
-            // 从末尾反向寻找时间列（形如 12:34 或 2026）
+            // 时间列只认真正的时钟 HH:MM / HH:MM:SS。
+            // 绝不能拿「4 位数字」猜年份：Android 上目录大小默认就是 4096，
+            // 会把时间列定位到「大小」列，名称被拼成 "2026-10-20 01:23 Android"，
+            // 拼出的路径不存在 —— 这就是「点进文件夹不显示」的直接原因。
             var timeIdx = -1
-            for idx in 3..<parts.count {
-                if parts[idx].contains(":") || (parts[idx].count == 4 && Int(parts[idx]) != nil) {
-                    timeIdx = idx
-                    break
-                }
+            for idx in 2..<parts.count where Self.isClockToken(parts[idx]) {
+                timeIdx = idx
+                break
             }
 
             var name = ""
@@ -228,8 +256,17 @@ final class FilesStore: ObservableObject {
             var size: Int64 = 0
 
             if timeIdx > 1 && timeIdx + 1 < parts.count {
-                dateText = "\(parts[timeIdx - 1]) \(parts[timeIdx])"
-                size = Int64(parts[timeIdx - 2]) ?? 0
+                // 日期可能占 1 列（2026-10-20）或 2 列（Oct 20）。
+                // 判断依据：时间前一列是纯数字、再前一列不是数字 → 月名 + 日。
+                var dateCols = 1
+                if timeIdx >= 2,
+                   Int(parts[timeIdx - 1]) != nil,
+                   Int(parts[timeIdx - 2]) == nil {
+                    dateCols = 2
+                }
+                dateText = parts[(timeIdx - dateCols)..<timeIdx].joined(separator: " ")
+                let sizeIdx = timeIdx - dateCols - 1
+                size = sizeIdx > 0 ? (Int64(parts[sizeIdx]) ?? 0) : 0
                 name = parts[(timeIdx + 1)...].joined(separator: " ")
             } else if parts.count >= 7 {
                 name = parts[6...].joined(separator: " ")

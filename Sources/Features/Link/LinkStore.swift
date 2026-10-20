@@ -366,20 +366,15 @@ final class LinkStore: ObservableObject {
         // 1. 确保目录存在
         _ = await shellLines("mkdir -p \(Self.quote(dir))")
 
-        // 2. push
-        let pushResult = await runCommand(["push", localImagePath, remotePath])
-        let pushText = pushResult.output.lowercased()
-        if pushText.contains("error") || pushText.contains("no such") || pushText.contains("failed") {
-            return "图标上传失败：\(pushResult.output)"
+        // 2. push + 双检（失败自动清残留并重推一次）
+        if let err = await pushAndVerify(localPath: localImagePath,
+                                         remotePath: remotePath,
+                                         label: "图标") {
+            return err
         }
 
-        // 3. chmod + ls 校验
+        // 3. 权限（车机上别的 App 要能读）
         _ = await shellLines("chmod 644 \(Self.quote(remotePath))")
-        let verify = await shellLines("ls \(Self.quote(remotePath)) 2>&1")
-        let verifyText = verify.joined(separator: " ").lowercased()
-        if verifyText.contains("no such") || verifyText.contains("not found") || verify.isEmpty {
-            return "图标上传后校验失败：\(verify.joined(separator: " "))"
-        }
 
         // 4. 通知车机
         busyMessage = "应用图标…"
@@ -403,7 +398,8 @@ final class LinkStore: ObservableObject {
             return nil
         }
         await loadIcons()
-        return snapshot.message.isEmpty ? "设置图标失败" : snapshot.message
+        let raw = snapshot.message.isEmpty ? "设置图标失败" : snapshot.message
+        return Self.friendlyMessage(raw, method: "setLaunchableAppIcon")
     }
 
     /// POSIX 单引号转义（原版 escapeRemotePath）
@@ -574,17 +570,13 @@ final class LinkStore: ObservableObject {
 
         _ = await shellLines("mkdir -p \(Self.quote(dir))")
 
-        let pushResult = await runCommand(["push", localPath, remotePath])
-        let pushText = pushResult.output.lowercased()
-        if pushText.contains("error") || pushText.contains("no such") || pushText.contains("failed") {
-            return "音频上传失败：\(pushResult.output)"
+        if let err = await pushAndVerify(localPath: localPath,
+                                         remotePath: remotePath,
+                                         label: "音频") {
+            return err
         }
 
         _ = await shellLines("chmod 644 \(Self.quote(remotePath))")
-        let verify = await shellLines("ls \(Self.quote(remotePath)) 2>&1")
-        if verify.isEmpty || verify.joined(separator: " ").lowercased().contains("no such") {
-            return "音频上传后校验失败：\(verify.joined(separator: " "))"
-        }
 
         busyMessage = "写入语音配置…"
         let values = await request(
@@ -627,10 +619,17 @@ final class LinkStore: ObservableObject {
             for user in users {
                 let cmd = buildCommand(authority: auth, method: method,
                                        arg: arg, extras: extras, user: user)
-                let lines = await shellLines(cmd)
-                let raw = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                // 上游 LingFansLinkSupport.kt:511 —— 先看退出码，非 0 直接判失败。
+                // 以前用 shellLines 只能拿到文本、退出码被丢弃，
+                // 于是 content call 失败时也只能在错误输出里瞎解析。
+                let (exitOK, output) = await adb.shellAsync(cmd)
+                let raw = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 lastRawOutput = raw
 
+                guard exitOK else {
+                    lastMessage = raw.isEmpty ? "调用失败（无输出，退出码非 0）" : raw
+                    continue
+                }
                 guard !raw.isEmpty else {
                     lastMessage = "无输出"
                     continue
@@ -762,6 +761,99 @@ final class LinkStore: ObservableObject {
     private struct LinkCmdResult {
         let success: Bool
         let output: String
+    }
+
+    // MARK: - 错误文案（A11）
+
+    /// 上游 `LingFansLinkSupport.kt:150-160`：车机端不支持图标相关方法时，
+    /// 原始回执只是 "unsupported method xxx"，看不出是版本问题。
+    private static let iconProviderMethods: Set<String> = [
+        "getLaunchableAppIcons", "setLaunchableAppIcon",
+        "resetLaunchableAppIcon", "refreshLaunchableAppIcons",
+    ]
+
+    private static func friendlyMessage(_ message: String, method: String) -> String {
+        let lower = message.lowercased()
+        if iconProviderMethods.contains(method),
+           lower.contains("unsupported method"),
+           lower.contains(method.lowercased()) {
+            return "当前车机端菱粉桌面版本不支持图标定制，请升级车机端菱粉桌面后重试"
+        }
+        return message
+    }
+
+    // MARK: - 上传校验（A9 / A10）
+
+    /// 上传后双重校验：**退出码 + 字节数**。
+    ///
+    /// - 退出码对齐上游 `LingFansLinkSupport.kt:414-418`：`ls` 非 0 即失败。
+    ///   以前用文本排除法（只查 no such / 空），`Permission denied`、
+    ///   `Read-only file system` 都会被当成成功，然后车机侧静默失败。
+    /// - 字节数弥补上游靠 Kadb sync 天然保证的一致性：CLI push 在弱网下
+    ///   可能「部分写入但退出码非 0、输出又不含 error/failed」，
+    ///   车机拿到半张图 → 有时能解码有时不能。
+    ///
+    /// 返回 nil 表示通过，否则返回可读的错误描述。
+    private func verifyUploadedFile(localPath: String,
+                                    remotePath: String,
+                                    label: String) async -> String? {
+        let quoted = Self.quote(remotePath)
+
+        // 1) 存在性 / 可读性：只看退出码
+        let (lsOK, _) = await adb.shellAsync("ls \(quoted)")
+        guard lsOK else {
+            return "\(label)上传后校验失败：文件不存在或不可读"
+        }
+
+        // 2) 字节数必须完全一致
+        // 少数老 ROM 的 stat 不支持 -c，此时不误判为失败（保留上面的退出码校验即可）
+        let (statOK, statOut) = await adb.shellAsync("stat -c %s \(quoted)")
+        guard statOK else { return nil }
+
+        let remoteSize = Int64(statOut.trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
+        let attrs = try? FileManager.default.attributesOfItem(atPath: localPath)
+        let localSize = ((attrs?[.size] as? NSNumber)?.int64Value) ?? -1
+
+        guard remoteSize >= 0, remoteSize == localSize else {
+            return "\(label)写入不完整（本地 \(localSize) B / 远端 \(remoteSize) B）"
+        }
+        return nil
+    }
+
+    /// 推送 → 校验，失败时清掉残留重推一次。
+    /// 返回 nil 表示成功，否则返回最后一次的错误。
+    private func pushAndVerify(localPath: String,
+                               remotePath: String,
+                               label: String) async -> String? {
+        var lastError = "\(label)上传失败"
+
+        for attempt in 1...2 {
+            let pushResult = await runCommand(["push", localPath, remotePath])
+            let text = pushResult.output.lowercased()
+            let pushFailed = !pushResult.success
+                || text.contains("error")
+                || text.contains("failed")
+                || text.contains("no such")
+
+            if !pushFailed {
+                if let err = await verifyUploadedFile(localPath: localPath,
+                                                      remotePath: remotePath,
+                                                      label: label) {
+                    lastError = err
+                } else {
+                    return nil
+                }
+            } else {
+                lastError = "\(label)上传失败："
+                    + pushResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // 第一次失败：清掉可能残留的半截文件，再重推一次
+            if attempt == 1 {
+                _ = await adb.shellAsync("rm -f \(Self.quote(remotePath))")
+            }
+        }
+        return lastError
     }
 
     private func runCommand(_ args: [String]) async -> LinkCmdResult {
