@@ -106,6 +106,13 @@ struct DeviceInfo {
     var currentUser: String = ""
     /// adb shell 身份（`id` 输出，含 uid=0 说明是 root）
     var shellIdentity: String = ""
+    /// 内部存储总量 / 已用（GB，取自 df -h /data）
+    var storageTotalGB: String = ""
+    var storageUsedGB: String = ""
+    /// 已用比例 0~1
+    var storageRatio: Double = 0
+    /// 亮度百分比（原版把 0~255 换算成 %）
+    var brightnessPercent: String = ""
 
     var displayName: String {
         let parts = [brand, model].filter { !$0.isEmpty }

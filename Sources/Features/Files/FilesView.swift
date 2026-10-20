@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuickLook
 
 /// 文件管理
 ///
@@ -14,6 +15,8 @@ struct FilesView: View {
     @State private var showCreateFolder = false
     @State private var createIsFolder = true
     @State private var detailEntry: FilesStore.Entry?
+    /// 在本机打开（原版「在本机打开」→ 下载到缓存后预览）
+    @State private var previewURL: URL?
     @State private var showDeleteConfirm = false
     @State private var target: FilesStore.Entry?
     @State private var nameInput = ""
@@ -168,6 +171,7 @@ struct FilesView: View {
                 }
             }
         }
+        .quickLookPreview($previewURL)
         .sheet(item: $detailEntry) { entry in
             FileDetailSheet(entry: entry, isPresented: Binding(
                 get: { detailEntry != nil },
@@ -335,6 +339,12 @@ struct FilesView: View {
 
             if !entry.isDir {
                 Button {
+                    Task { await openInPlace(entry) }
+                } label: {
+                    Label("在本机打开", systemImage: "eye")
+                }
+
+                Button {
                     Task { await download(entry) }
                 } label: {
                     Label("下载到本机", systemImage: "arrow.down.circle")
@@ -361,6 +371,12 @@ struct FilesView: View {
     private func download(_ entry: FilesStore.Entry) async {
         guard let path = await store.pull(entry) else { return }
         shareURL = URL(fileURLWithPath: path)
+    }
+
+    /// 原版「在本机打开」：拉到本地后直接预览，不进分享面板
+    private func openInPlace(_ entry: FilesStore.Entry) async {
+        guard let path = await store.pull(entry) else { return }
+        previewURL = URL(fileURLWithPath: path)
     }
 }
 

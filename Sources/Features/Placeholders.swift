@@ -45,7 +45,9 @@ struct InfoView: View {
                         infoRow("电量", info.batteryLevel.isEmpty
                                ? "—" : "\(info.batteryLevel)%")
                         infoRow("充电", info.isCharging ? "正在充电" : "未充电")
-                        infoRow("屏幕亮度", info.brightness.isEmpty ? "—" : info.brightness)
+                        infoRow("屏幕亮度", info.brightnessPercent.isEmpty
+                               ? (info.brightness.isEmpty ? "—" : info.brightness)
+                               : info.brightnessPercent)
                         infoRow("当前用户", info.currentUser.isEmpty ? "—" : info.currentUser)
                         if !info.shellIdentity.isEmpty {
                             infoRow("Shell 权限", info.shellIdentity.contains("uid=0")
@@ -59,8 +61,36 @@ struct InfoView: View {
                 MDCard {
                     VStack(alignment: .leading, spacing: 14) {
                         sectionTitle("存储空间")
-                        infoRow("内部存储", info.totalStorage)
-                        infoRow("可用", info.availStorage)
+
+                        if !info.storageTotalGB.isEmpty {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("内部存储")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(MDColor.textPrimary)
+                                    Text("共 \(info.storageTotalGB) GB · 已用 \(info.storageUsedGB) GB")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(MDColor.textSecondary)
+                                }
+                                Spacer()
+                                Text("\(Int(info.storageRatio * 100))%")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundStyle(MDColor.info)
+                            }
+
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(MDColor.surfaceHigh).frame(height: 8)
+                                    Capsule()
+                                        .fill(MDColor.info)
+                                        .frame(width: max(0, geo.size.width * info.storageRatio), height: 8)
+                                }
+                            }
+                            .frame(height: 8)
+                        } else {
+                            infoRow("内部存储", info.totalStorage)
+                            infoRow("可用", info.availStorage)
+                        }
                     }
                 }
                 if !info.currentFocus.isEmpty {
@@ -135,7 +165,16 @@ struct InfoView: View {
         )
         d.cpuModel = cpuRaw
 
-        d.totalStorage = await shell("df -h /data 2>/dev/null | tail -1")
+        // 存储：原版取 df -h /data 最后一行，parts[1]=总量 parts[2]=已用 parts[4]=百分比
+        let dfLine = await shell("df -h /data 2>/dev/null | tail -1")
+        d.totalStorage = dfLine
+        let dfParts = dfLine.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        if dfParts.count >= 5 {
+            d.storageTotalGB = dfParts[1].replacingOccurrences(of: "G", with: "")
+            d.storageUsedGB = dfParts[2].replacingOccurrences(of: "G", with: "")
+            let pct = dfParts[4].replacingOccurrences(of: "%", with: "")
+            d.storageRatio = (Double(pct) ?? 0) / 100
+        }
 
         // 电量与充电状态（原版读 AC powered 判断是否在充电）
         let batLevel = await shell("dumpsys battery | grep level")
@@ -161,8 +200,12 @@ struct InfoView: View {
         )
         d.currentFocus = focus
 
-        // 系统亮度（原版 DeviceFullInfo.kt:320）
+        // 系统亮度（原版 DeviceFullInfo.kt:320）：0~255 换算成百分比
         d.brightness = await shell("settings get system screen_brightness")
+        if let raw = Int(d.brightness.trimmingCharacters(in: .whitespaces)) {
+            let clamped = min(max(raw, 0), 255)
+            d.brightnessPercent = "\(Int(Double(clamped) / 255.0 * 100))%"
+        }
 
         // 当前活跃用户（原版 AppStartupManager.kt:207）
         d.currentUser = await shell("am get-current-user")
