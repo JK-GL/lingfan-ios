@@ -38,7 +38,9 @@ final class LinkStore: ObservableObject {
     @Published private(set) var weatherHost = ""
 
     @Published private(set) var voiceItems: [String: String] = [:]
-    @Published private(set) var appIcons: [String: String] = [:]
+    @Published private(set) var iconSnapshot = LingFansIconSnapshot()
+
+    var iconItems: [LingFansIconItem] { iconSnapshot.items }
 
     @Published private(set) var lastRawOutput = ""
     @Published private(set) var busyMessage: String?
@@ -202,7 +204,12 @@ final class LinkStore: ObservableObject {
     }
 
     func loadIcons() async {
-        appIcons = await request(method: "getLaunchableAppIcons") ?? [:]
+        let values = await request(method: "getLaunchableAppIcons")
+        iconSnapshot = LingFansIconPayload.snapshot(
+            from: values,
+            message: errorMessage ?? "",
+            method: "getLaunchableAppIcons"
+        )
     }
 
     // MARK: - 写入（参数与原版逐字一致）
@@ -242,13 +249,32 @@ final class LinkStore: ObservableObject {
     func resetIcon(package: String) async -> Bool {
         busyMessage = "重置图标…"
         defer { busyMessage = nil }
-        _ = await request(
+
+        if isDemo {
+            if let i = iconSnapshot.items.firstIndex(where: { $0.packageName == package }) {
+                let o = iconSnapshot.items[i]
+                iconSnapshot.items[i] = LingFansIconItem(
+                    packageName: o.packageName, appLabel: o.appLabel,
+                    launchActivity: o.launchActivity, hasCustomIcon: false,
+                    customIconPath: "", sourceIconPath: "",
+                    roundedCropEnabled: false, cornerRadiusFraction: 0,
+                    assetKind: LingFansIcon.assetKindSourceSquare,
+                    previewPath: "", applicationId: o.applicationId
+                )
+            }
+            return true
+        }
+
+        let values = await request(
             method: "resetLaunchableAppIcon",
             arg: package,
             extras: [("packageName", package)]
         )
-        await loadIcons()
-        return true
+        let snapshot = LingFansIconPayload.snapshot(
+            from: values, message: errorMessage ?? "", method: "resetLaunchableAppIcon"
+        )
+        if snapshot.success { iconSnapshot = snapshot } else { await loadIcons() }
+        return snapshot.success
     }
 
     /// 原版 332 行：无 arg 无 extras
@@ -257,6 +283,197 @@ final class LinkStore: ObservableObject {
         defer { busyMessage = nil }
         _ = await request(method: "refreshLaunchableAppIcons")
         await loadIcons()
+    }
+
+    /// 设置自定义图标。
+    /// 完整链路（原版 uploadLingFansIconFile + updateLingFansLaunchableAppIcon）：
+    ///   1. push 本地图片 → <iconBaseDir>/<pkg>_icon_<时间戳>.<ext>
+    ///   2. chmod 644
+    ///   3. ls 校验确实写进去了
+    ///   4. setLaunchableAppIcon：arg=pkg，extras 五个字段全带
+    func setIcon(
+        package: String,
+        localImagePath: String,
+        rounded: Bool,
+        radius: Double
+    ) async -> String? {
+        guard !iconSnapshot.iconBaseDir.isEmpty else {
+            return "车机未返回可写入的图标目录，无法设置"
+        }
+
+        let ext = (localImagePath as NSString).pathExtension.lowercased()
+        let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "gif", "ico"]
+        guard allowed.contains(ext) else {
+            return "仅支持 png、jpg、jpeg、webp、bmp、gif、ico 图标文件"
+        }
+        guard FileManager.default.isReadableFile(atPath: localImagePath) else {
+            return "裁剪结果文件不存在或不可读"
+        }
+
+        busyMessage = "上传图标…"
+        defer { busyMessage = nil }
+
+        if isDemo {
+            if let i = iconSnapshot.items.firstIndex(where: { $0.packageName == package }) {
+                let o = iconSnapshot.items[i]
+                iconSnapshot.items[i] = LingFansIconItem(
+                    packageName: o.packageName, appLabel: o.appLabel,
+                    launchActivity: o.launchActivity, hasCustomIcon: true,
+                    customIconPath: "/data/.../custom.png", sourceIconPath: "/data/.../src.png",
+                    roundedCropEnabled: rounded,
+                    cornerRadiusFraction: min(max(radius, 0), 0.5),
+                    assetKind: LingFansIcon.assetKindSourceSquare,
+                    previewPath: "", applicationId: o.applicationId
+                )
+            }
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let stamp = formatter.string(from: Date())
+        let safePkg = package.replacingOccurrences(
+            of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression
+        )
+        let fileName = "\(safePkg)_icon_\(stamp).\(ext)"
+
+        let dir = iconSnapshot.iconBaseDir.hasSuffix("/")
+            ? String(iconSnapshot.iconBaseDir.dropLast())
+            : iconSnapshot.iconBaseDir
+        let remotePath = "\(dir)/\(fileName)"
+
+        // 1. 确保目录存在
+        _ = await shellLines("mkdir -p \(Self.quote(dir))")
+
+        // 2. push
+        let pushResult = await runCommand(["push", localImagePath, remotePath])
+        let pushText = pushResult.output.lowercased()
+        if pushText.contains("error") || pushText.contains("no such") || pushText.contains("failed") {
+            return "图标上传失败：\(pushResult.output)"
+        }
+
+        // 3. chmod + ls 校验
+        _ = await shellLines("chmod 644 \(Self.quote(remotePath))")
+        let verify = await shellLines("ls \(Self.quote(remotePath)) 2>&1")
+        let verifyText = verify.joined(separator: " ").lowercased()
+        if verifyText.contains("no such") || verifyText.contains("not found") || verify.isEmpty {
+            return "图标上传后校验失败：\(verify.joined(separator: " "))"
+        }
+
+        // 4. 通知车机
+        busyMessage = "应用图标…"
+        let values = await request(
+            method: "setLaunchableAppIcon",
+            arg: package,
+            extras: [
+                ("packageName", package),
+                ("path", remotePath),
+                ("roundedCropEnabled", rounded ? "true" : "false"),
+                ("cornerRadiusFraction", String(format: "%.4f", min(max(radius, 0), 0.5))),
+                ("assetKind", LingFansIcon.assetKindSourceSquare),
+            ]
+        )
+
+        let snapshot = LingFansIconPayload.snapshot(
+            from: values, message: errorMessage ?? "", method: "setLaunchableAppIcon"
+        )
+        if snapshot.success {
+            iconSnapshot = snapshot
+            return nil
+        }
+        await loadIcons()
+        return snapshot.message.isEmpty ? "设置图标失败" : snapshot.message
+    }
+
+    /// POSIX 单引号转义（原版 escapeRemotePath）
+    private static func quote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+
+    // MARK: - 图标包导入 / 导出
+
+    @Published private(set) var iconPackBusy = false
+    @Published private(set) var iconPackMessage: String?
+    @Published private(set) var iconPackExportURL: URL?
+
+    /// 导出当前所有自定义图标为 ZIP
+    func exportIconPack() async {
+        iconPackBusy = true
+        iconPackMessage = nil
+        iconPackExportURL = nil
+        defer { iconPackBusy = false }
+
+        if isDemo {
+            iconPackMessage = "演示模式不导出图标包"
+            return
+        }
+
+        let result = await LingFansIconPack.export(items: iconItems) { [weak self] remote in
+            await self?.pullToTemp(remote)
+        }
+        iconPackMessage = result.message
+        iconPackExportURL = result.fileURL
+    }
+
+    /// 导入图标包并逐个应用。返回 (成功数, 失败信息)
+    @discardableResult
+    func importIconPack(fileURL: URL) async -> (Int, [String]) {
+        iconPackBusy = true
+        iconPackMessage = nil
+        defer { iconPackBusy = false }
+
+        if isDemo {
+            iconPackMessage = "演示模式不导入图标包"
+            return (0, [])
+        }
+
+        let read = LingFansIconPack.read(fileURL: fileURL)
+        guard read.success else {
+            iconPackMessage = read.message
+            return (0, [read.message])
+        }
+
+        var success = 0
+        var failures: [String] = []
+
+        for entry in read.entries {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("pack_\(UUID().uuidString).png")
+            do {
+                try entry.pngData.write(to: tmp, options: .atomic)
+            } catch {
+                failures.append("\(entry.packageName)：写入临时文件失败")
+                continue
+            }
+
+            if let err = await setIcon(
+                package: entry.packageName,
+                localImagePath: tmp.path,
+                rounded: entry.roundedCropEnabled,
+                radius: entry.cornerRadiusFraction
+            ) {
+                failures.append("\(entry.packageName)：\(err)")
+            } else {
+                success += 1
+            }
+            try? FileManager.default.removeItem(at: tmp)
+        }
+
+        iconPackMessage = "导入完成：成功 \(success) 个"
+            + (failures.isEmpty ? "" : "，失败 \(failures.count) 个")
+        await loadIcons()
+        return (success, failures)
+    }
+
+    /// 把远程文件拉到本地临时文件，返回本地路径
+    private func pullToTemp(_ remotePath: String) async -> String? {
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pull_\(UUID().uuidString)")
+        try? FileManager.default.removeItem(at: dest)
+
+        _ = await runCommand(["pull", remotePath, dest.path])
+
+        return FileManager.default.fileExists(atPath: dest.path) ? dest.path : nil
     }
 
     /// 原版 421 行：arg = key
@@ -421,6 +638,20 @@ final class LinkStore: ObservableObject {
         }
     }
 
+    /// 走完整 adb 子命令（push / pull 这类不是 shell 的操作）
+    private struct LinkCmdResult {
+        let success: Bool
+        let output: String
+    }
+
+    private func runCommand(_ args: [String]) async -> LinkCmdResult {
+        await withCheckedContinuation { (cont: CheckedContinuation<LinkCmdResult, Never>) in
+            adb.runAsync(args) { r in
+                cont.resume(returning: LinkCmdResult(success: r.success, output: r.output))
+            }
+        }
+    }
+
     // MARK: - 演示
 
     private func loadDemo() {
@@ -436,11 +667,39 @@ final class LinkStore: ObservableObject {
             "ttsVoice": "女声-柔和",
             "volume": "70",
         ]
-        appIcons = [
-            "com.sgmw.navi": "默认",
-            "com.sgmw.carradio": "自定义-1",
-            "com.android.settings": "默认",
-        ]
+        iconSnapshot = LingFansIconSnapshot(
+            success: true,
+            iconBaseDir: "/sdcard/Android/data/com.zzh.launcher50s.alpha/files/icons",
+            iconPreviewBaseDir: "/sdcard/Android/data/com.zzh.launcher50s.alpha/files/icon_preview",
+            items: [
+                LingFansIconItem(
+                    packageName: "com.sgmw.navi", appLabel: "高德地图",
+                    launchActivity: "com.sgmw.navi.MainActivity",
+                    hasCustomIcon: false, customIconPath: "", sourceIconPath: "",
+                    roundedCropEnabled: false, cornerRadiusFraction: 0,
+                    assetKind: LingFansIcon.assetKindSourceSquare,
+                    previewPath: "", applicationId: "com.sgmw.navi"
+                ),
+                LingFansIconItem(
+                    packageName: "com.sgmw.carradio", appLabel: "车载收音机",
+                    launchActivity: "com.sgmw.carradio.MainActivity",
+                    hasCustomIcon: true, customIconPath: "/data/icons/radio.png",
+                    sourceIconPath: "/data/icons/radio_src.png",
+                    roundedCropEnabled: true, cornerRadiusFraction: 0.22,
+                    assetKind: LingFansIcon.assetKindSourceSquare,
+                    previewPath: "", applicationId: "com.sgmw.carradio"
+                ),
+                LingFansIconItem(
+                    packageName: "com.android.settings", appLabel: "设置",
+                    launchActivity: "com.android.settings.Settings",
+                    hasCustomIcon: false, customIconPath: "", sourceIconPath: "",
+                    roundedCropEnabled: false, cornerRadiusFraction: 0,
+                    assetKind: LingFansIcon.assetKindSourceSquare,
+                    previewPath: "", applicationId: "com.android.settings"
+                ),
+            ],
+            message: "ok"
+        )
         lastRawOutput = "Result: Bundle[{ok=true, versionName=3.2.4, versionCode=3204}]"
         errorMessage = nil
     }

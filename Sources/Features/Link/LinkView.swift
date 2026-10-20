@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// 菱粉联动
 ///
@@ -16,6 +17,11 @@ struct LinkView: View {
     @State private var hostInput = ""
     @State private var showRaw = false
     @State private var showLogPreview = false
+
+    // 图标编辑（具体状态在 IconEditorSheet 内部）
+    @State private var showIconEditor = false
+    @State private var iconTarget: LingFansIconItem?
+    @State private var showPackImporter = false
 
     var body: some View {
         ZStack {
@@ -81,6 +87,41 @@ struct LinkView: View {
                 exportPath: store.logExportPath,
                 isPresented: $showLogPreview
             )
+        }
+        .sheet(isPresented: $showIconEditor) {
+            if let item = iconTarget {
+                IconEditorSheet(
+                    store: store,
+                    item: item,
+                    isPresented: $showIconEditor
+                )
+            }
+        }
+        .fileImporter(
+            isPresented: $showPackImporter,
+            allowedContentTypes: [.zip],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("pack_import_\(UUID().uuidString).zip")
+                try? FileManager.default.removeItem(at: tmp)
+                do {
+                    try FileManager.default.copyItem(at: url, to: tmp)
+                } catch {
+                    return
+                }
+                Task {
+                    await store.importIconPack(fileURL: tmp)
+                    try? FileManager.default.removeItem(at: tmp)
+                }
+            case .failure:
+                break
+            }
         }
     }
 
@@ -282,38 +323,126 @@ struct LinkView: View {
                     .buttonStyle(.plain)
                 }
 
-                if store.appIcons.isEmpty {
-                    Text("无可替换图标的应用")
+                if store.iconItems.isEmpty {
+                    Text(store.iconSnapshot.message.isEmpty
+                         ? "无可替换图标的应用"
+                         : store.iconSnapshot.message)
                         .font(.system(size: 13))
                         .foregroundStyle(MDColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(store.appIcons.sorted(by: { $0.key < $1.key }), id: \.key) { kv in
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(shortPackage(kv.key))
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(MDColor.textPrimary)
-                                Text(kv.value)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(MDColor.textSecondary)
-                            }
-                            Spacer(minLength: 4)
-                            if kv.value != "默认" {
-                                Button {
-                                    Task { _ = await store.resetIcon(package: kv.key) }
-                                } label: {
-                                    Text("重置")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(MDColor.danger)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 2)
+                    ForEach(store.iconItems) { item in
+                        iconRow(item)
+                    }
+                }
+
+                // 图标包导入 / 导出
+                HStack(spacing: 10) {
+                    Button {
+                        showPackImporter = true
+                    } label: {
+                        Text("导入图标包")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(MDColor.app)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                    .stroke(MDColor.app.opacity(0.35), lineWidth: 1.1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.iconPackBusy)
+
+                    Button {
+                        Task { await store.exportIconPack() }
+                    } label: {
+                        Text(store.iconPackBusy ? "处理中…" : "导出图标包")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(MDColor.app)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                    .stroke(MDColor.app.opacity(0.35), lineWidth: 1.1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.iconPackBusy)
+                }
+
+                if let msg = store.iconPackMessage {
+                    Text(msg)
+                        .font(.system(size: 11))
+                        .foregroundStyle(MDColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let url = store.iconPackExportURL {
+                    ShareLink(item: url) {
+                        Text("保存导出的图标包")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(MDColor.brand)
                     }
                 }
             }
         }
+    }
+
+    private func iconRow(_ item: LingFansIconItem) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(item.displayName)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(MDColor.textPrimary)
+                        .lineLimit(1)
+                    if item.hasCustomIcon {
+                        Text("自定义")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(MDColor.app)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(MDColor.app.opacity(0.12)))
+                    }
+                }
+                Text(item.packageName)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(MDColor.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 4)
+
+            Button {
+                iconTarget = item
+                showIconEditor = true
+            } label: {
+                Text("设置")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(MDColor.brand)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(MDColor.brand.opacity(0.10)))
+            }
+            .buttonStyle(.plain)
+
+            if item.hasCustomIcon {
+                Button {
+                    Task { _ = await store.resetIcon(package: item.packageName) }
+                } label: {
+                    Text("重置")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(MDColor.danger)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(MDColor.danger.opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private func shortPackage(_ pkg: String) -> String {
@@ -462,6 +591,243 @@ struct LinkView: View {
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
+    }
+}
+
+// MARK: - 图标编辑
+
+struct IconEditorSheet: View {
+    @ObservedObject var store: LinkStore
+    let item: LingFansIconItem
+    @Binding var isPresented: Bool
+
+    @State private var sourcePath: String?
+    @State private var original: UIImage?
+    @State private var preview: UIImage?
+    @State private var rounded = true
+    @State private var radius: Double = 0.22
+    @State private var showPicker = false
+    @State private var errorMessage: String?
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+
+                ScrollView {
+                    VStack(spacing: MDMetric.cardSpacing) {
+                        previewCard
+                        optionsCard
+
+                        if let err = errorMessage {
+                            Text(err)
+                                .font(.system(size: 12))
+                                .foregroundStyle(MDColor.warning)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
+                                        .fill(MDColor.warning.opacity(0.08))
+                                )
+                        }
+
+                        MDPrimaryButton(
+                            title: saving ? "正在应用…" : "同步到车机",
+                            enabled: sourcePath != nil && !saving
+                        ) {
+                            Task { await apply() }
+                        }
+
+                        Text("图标会先上传到车机的图标目录，再由菱粉桌面应用。\n原图按正方形居中裁剪，输出 512×512 PNG。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MDColor.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
+                    .padding(.horizontal, MDMetric.pagePadding)
+                    .padding(.top, 12)
+                    .padding(.bottom, 32)
+                }
+            }
+            .navigationTitle(item.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MDColor.background, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+            .fileImporter(
+                isPresented: $showPicker,
+                allowedContentTypes: [.image],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    loadImage(from: url)
+                case .failure(let error):
+                    errorMessage = "选择图片失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    // MARK: - 预览
+
+    private var previewCard: some View {
+        MDCard {
+            VStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(MDColor.surfaceHigh)
+                        .frame(width: 148, height: 148)
+
+                    if let preview {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 128, height: 128)
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo.badge.plus")
+                                .font(.system(size: 26, weight: .light))
+                                .foregroundStyle(MDColor.textTertiary)
+                            Text("未选择图片")
+                                .font(.system(size: 11))
+                                .foregroundStyle(MDColor.textTertiary)
+                        }
+                    }
+                }
+
+                Button {
+                    showPicker = true
+                } label: {
+                    Text(sourcePath == nil ? "选择图片" : "重新选择")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(MDColor.brand)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                .stroke(MDColor.brand.opacity(0.4), lineWidth: 1.2)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - 选项
+
+    private var optionsCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("圆角遮罩")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(MDColor.textPrimary)
+                    Spacer()
+                    Toggle("", isOn: $rounded)
+                        .labelsHidden()
+                        .tint(MDColor.app)
+                        .onChange(of: rounded) { _ in regenerate() }
+                }
+
+                if rounded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("圆角半径")
+                                .font(.system(size: 13))
+                                .foregroundStyle(MDColor.textSecondary)
+                            Spacer()
+                            Text(String(format: "%.0f%%", radius * 100))
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(MDColor.textPrimary)
+                        }
+                        Slider(value: $radius, in: 0...0.5, step: 0.01)
+                            .tint(MDColor.app)
+                            .onChange(of: radius) { _ in regenerate() }
+                        Text("车机端圆形图标一般用 50%")
+                            .font(.system(size: 10))
+                            .foregroundStyle(MDColor.textTertiary)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 行为
+
+    private func loadImage(from url: URL) {
+        errorMessage = nil
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        let ext = url.pathExtension.lowercased()
+        let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "gif", "ico"]
+        guard allowed.contains(ext) else {
+            errorMessage = "仅支持 png、jpg、jpeg、webp、bmp、gif、ico 图标文件"
+            return
+        }
+
+        // 复制到沙箱，避免安全作用域在异步上传时失效
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lingfan_icon_src_\(UUID().uuidString).\(ext)")
+        do {
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: url, to: dest)
+        } catch {
+            errorMessage = "读取图片失败：\(error.localizedDescription)"
+            return
+        }
+
+        guard let img = LingFansIconRenderer.loadDownsampled(path: dest.path) else {
+            errorMessage = "这张图片无法解码"
+            return
+        }
+
+        sourcePath = dest.path
+        original = img
+        regenerate()
+    }
+
+    private func regenerate() {
+        guard let path = sourcePath else { return }
+        preview = LingFansIconRenderer.render(
+            path: path, rounded: rounded, radiusFraction: radius
+        )
+    }
+
+    private func apply() async {
+        guard let path = sourcePath else { return }
+        // 用处理后的 PNG 上传，车机拿到的就是最终效果
+        guard let rendered = LingFansIconRenderer.render(
+            path: path, rounded: rounded, radiusFraction: radius
+        ), let pngPath = LingFansIconRenderer.writePNG(rendered) else {
+            errorMessage = "生成图标失败"
+            return
+        }
+
+        saving = true
+        errorMessage = nil
+        defer { saving = false }
+
+        if let err = await store.setIcon(
+            package: item.packageName,
+            localImagePath: pngPath,
+            rounded: rounded,
+            radius: radius
+        ) {
+            errorMessage = err
+            return
+        }
+
+        try? FileManager.default.removeItem(atPath: pngPath)
+        isPresented = false
     }
 }
 

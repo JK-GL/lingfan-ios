@@ -7,6 +7,10 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		C4416CA339B0BDF51D073628 /* ZipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36B36D59F4B858931F56CBE /* ZipStore.swift */; };
+		22352D00A51711E4804D76AE /* LingFansIconPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */; };
+		45DEF559E89C8655E4EC1886 /* LingFansIconRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF2EEF30F50FA82BF1AD777 /* LingFansIconRenderer.swift */; };
+		AF77FDB351811987867C4838 /* LingFansIconModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B00A0613344AA07FA77FBAC /* LingFansIconModels.swift */; };
 		36516DAB3F9F26A7377B4B0B /* AppStartupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D34076D887912A164DE7D1A /* AppStartupManager.swift */; };
 		679A51C140D4F4724DB3EFE4 /* LingFansLogCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4638FA5DC523D46481A3365 /* LingFansLogCapture.swift */; };
 		08939A84D3431042B53AD829 /* InstallChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D87F511876693E352D485E /* InstallChannel.swift */; };
@@ -42,6 +46,10 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		C36B36D59F4B858931F56CBE /* ZipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ZipStore.swift; path = Sources/Shared/ZipStore.swift; sourceTree = "<group>"; };
+		4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansIconPack.swift; path = Sources/Features/Link/LingFansIconPack.swift; sourceTree = "<group>"; };
+		0FF2EEF30F50FA82BF1AD777 /* LingFansIconRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansIconRenderer.swift; path = Sources/Features/Link/LingFansIconRenderer.swift; sourceTree = "<group>"; };
+		2B00A0613344AA07FA77FBAC /* LingFansIconModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansIconModels.swift; path = Sources/Features/Link/LingFansIconModels.swift; sourceTree = "<group>"; };
 		9D34076D887912A164DE7D1A /* AppStartupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStartupManager.swift; path = Sources/Features/Apps/AppStartupManager.swift; sourceTree = "<group>"; };
 		E4638FA5DC523D46481A3365 /* LingFansLogCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansLogCapture.swift; path = Sources/Features/Link/LingFansLogCapture.swift; sourceTree = "<group>"; };
 		E4D87F511876693E352D485E /* InstallChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InstallChannel.swift; path = Sources/Features/Apps/InstallChannel.swift; sourceTree = "<group>"; };
@@ -104,6 +112,10 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					C36B36D59F4B858931F56CBE /* ZipStore.swift */,
+					4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */,
+					0FF2EEF30F50FA82BF1AD777 /* LingFansIconRenderer.swift */,
+					2B00A0613344AA07FA77FBAC /* LingFansIconModels.swift */,
 					9D34076D887912A164DE7D1A /* AppStartupManager.swift */,
 					E4638FA5DC523D46481A3365 /* LingFansLogCapture.swift */,
 					E4D87F511876693E352D485E /* InstallChannel.swift */,
@@ -215,6 +227,10 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					C4416CA339B0BDF51D073628 /* ZipStore.swift in Sources */,
+					22352D00A51711E4804D76AE /* LingFansIconPack.swift in Sources */,
+					45DEF559E89C8655E4EC1886 /* LingFansIconRenderer.swift in Sources */,
+					AF77FDB351811987867C4838 /* LingFansIconModels.swift in Sources */,
 					36516DAB3F9F26A7377B4B0B /* AppStartupManager.swift in Sources */,
 					679A51C140D4F4724DB3EFE4 /* LingFansLogCapture.swift in Sources */,
 					08939A84D3431042B53AD829 /* InstallChannel.swift in Sources */,
