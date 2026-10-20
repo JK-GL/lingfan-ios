@@ -203,7 +203,7 @@ final class FilesStore: ObservableObject {
                     let clean = isDir ? String(t.dropLast()) : t
                     if clean != "." && clean != ".." {
                         let full = parentPath == "/" ? "/\(clean)" : "\(parentPath)/\(clean)"
-                        out.append(Entry(name: clean, path: full, isDir: isDir, size: 0, date: "", perms: ""))
+                        out.append(Entry(name: clean, path: full, isDir: isDir, sizeBytes: 0, permissions: "", dateText: ""))
                     }
                 }
                 continue
@@ -251,9 +251,9 @@ final class FilesStore: ObservableObject {
                 name: name,
                 path: fullPath,
                 isDir: isDir,
-                size: isDir ? 0 : size,
-                date: dateText,
-                perms: perms
+                sizeBytes: isDir ? 0 : size,
+                permissions: perms,
+                dateText: dateText
             ))
         }
         return out
