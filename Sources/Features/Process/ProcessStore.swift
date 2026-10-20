@@ -11,6 +11,7 @@ import Foundation
 ///   进程名必须含 "." 且不以 "/" 开头 —— 即只保留 App 进程，
 ///   把内核线程（kworker、ksoftirqd 等几十个）全部滤掉。
 ///   没有这条过滤，列表会被噪音淹没，用户根本找不到要杀的那个 App。
+@MainActor
 final class ProcessStore: ObservableObject {
 
     struct Proc: Identifiable, Hashable {
