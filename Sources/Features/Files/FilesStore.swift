@@ -138,12 +138,24 @@ final class FilesStore: ObservableObject {
             return
         }
 
-        // ls -la 给权限/大小/时间，比 ls -l 多隐藏文件
-        // 严格对齐原版 FileManagerScreen.kt:418-428
         let normalizedTarget = (target.hasSuffix("/") && target != "/") ? String(target.dropLast()) : target
-        let safePath = normalizedTarget == "/" ? "/" : "\(normalizedTarget)/"
-        let lines = await shellLines("ls -al \"\(safePath)\" 2>&1")
-        let parsed = parseLS(lines, parent: normalizedTarget)
+
+        // ① 首选：sync 协议 LIST —— DENT 包里 mode/size/mtime/namelen 全是
+        //    二进制整数，不存在列错位、中文名和软链接也天然正确。
+        var parsed: [Entry] = []
+        var lines: [String] = []
+        var usedSync = false
+        if let syncEntries = await loadViaSync(normalizedTarget) {
+            parsed = syncEntries
+            usedSync = true
+        }
+
+        // ② 兜底：个别 ROM 关了 sync 服务时退回 ls -al 解析
+        if !usedSync {
+            let safePath = normalizedTarget == "/" ? "/" : "\(normalizedTarget)/"
+            lines = await shellLines("ls -al \"\(safePath)\" 2>&1")
+            parsed = parseLS(lines, parent: normalizedTarget)
+        }
 
         // 无论该目录是否为空，都更新 currentPath 保证面包屑和导航栈推进，绝不卡死
         if normalizedTarget != currentPath {
@@ -152,7 +164,7 @@ final class FilesStore: ObservableObject {
         currentPath = normalizedTarget
         entries = parsed
 
-        if parsed.isEmpty {
+        if parsed.isEmpty && !usedSync {
             let joined = lines.joined(separator: " ").lowercased()
             if joined.contains("permission denied") {
                 errorMessage = "没有权限访问该目录"
@@ -183,6 +195,49 @@ final class FilesStore: ObservableObject {
     /// drwxrwx--x  4 root sdcard_rw  4096 2026-10-20 01:23 Android
     /// -rw-rw----  1 root sdcard_rw 4120000 2026-10-19 20:01 bootanimation.zip
     /// lrwxrwxrwx  1 root root           8 2026-10-01 10:00 sdcard -> /storage/self/primary
+    // MARK: - sync 协议列目录（A6）
+
+    /// 走 sync 协议的 LIST 列目录。
+    ///
+    /// 与 CLI `ls -al` 的区别：这里拿到的是结构化字段，
+    /// 不看文本、不猜列位，所以中文名 / 含空格名 / 软链接 / SELinux 列
+    /// 全都不需要特殊处理。
+    ///
+    /// 失败返回 nil（由调用方退回 ls 解析），不抛错。
+    /// 放在 detached task 里跑：socket 收发是阻塞的，不能占主线程。
+    private func loadViaSync(_ path: String) async -> [Entry]? {
+        guard let serial = adb.currentSerial, !serial.isEmpty else { return nil }
+        let port = UInt16(AdbBridge.shared.serverPort) ?? 15037
+
+        let raw: [AdbSyncClient.RawEntry]? = await Task.detached(priority: .userInitiated) {
+            let client = AdbSyncClient(serial: serial, port: port)
+            defer { client.close() }
+            do {
+                try client.connect()
+                return try client.list(path)
+            } catch {
+                return nil
+            }
+        }.value
+
+        guard let raw else { return nil }
+
+        return raw.map { item in
+            // 软链接按目录处理：车机上 /sdcard 本身就是软链接，
+            // 不这样处理点了进不去（与原版行为一致）
+            let treatAsDir = item.isDirectory || item.isSymlink
+            let full = path == "/" ? "/\(item.name)" : "\(path)/\(item.name)"
+            return Entry(
+                name: item.name,
+                path: full,
+                isDir: treatAsDir,
+                sizeBytes: treatAsDir ? 0 : Int64(item.size),
+                permissions: AdbSyncClient.permissionString(item.mode),
+                dateText: AdbSyncClient.dateText(item.mtime)
+            )
+        }
+    }
+
     /// 判断一列是否是 `HH:MM` 或 `HH:MM:SS` 形式的时间。
     ///
     /// 为什么不用正则：列目录时每一行都要判断一次，`NSRegularExpression`
