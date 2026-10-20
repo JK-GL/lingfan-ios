@@ -139,28 +139,29 @@ final class FilesStore: ObservableObject {
         }
 
         // ls -la 给权限/大小/时间，比 ls -l 多隐藏文件
-        let safePath = target.hasSuffix("/") ? target : "\(target)/"
+        // 严格对齐原版 FileManagerScreen.kt:418-428
+        let normalizedTarget = (target.hasSuffix("/") && target != "/") ? String(target.dropLast()) : target
+        let safePath = normalizedTarget == "/" ? "/" : "\(normalizedTarget)/"
         let lines = await shellLines("ls -al \"\(safePath)\" 2>&1")
-        let parsed = parseLS(lines, parent: target)
+        let parsed = parseLS(lines, parent: normalizedTarget)
+
+        // 无论该目录是否为空，都更新 currentPath 保证面包屑和导航栈推进，绝不卡死
+        if normalizedTarget != currentPath {
+            history.append(currentPath)
+        }
+        currentPath = normalizedTarget
+        entries = parsed
 
         if parsed.isEmpty {
             let joined = lines.joined(separator: " ").lowercased()
             if joined.contains("permission denied") {
-                errorMessage = "没有权限访问 \(target)"
+                errorMessage = "没有权限访问该目录"
             } else if joined.contains("no such file") {
-                errorMessage = "路径不存在：\(target)"
+                errorMessage = "路径不存在"
             } else {
-                errorMessage = "读不到目录内容"
+                errorMessage = nil
             }
-            entries = []
-            return
         }
-
-        entries = parsed
-        if target != currentPath {
-            history.append(currentPath)
-        }
-        currentPath = target
     }
 
     func goUp() async {

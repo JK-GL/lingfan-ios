@@ -73,56 +73,66 @@ final class AppsStore: ObservableObject {
             return
         }
 
-        // 同时拿路径与包名
-        var lines = await shellLines("pm list packages -f 2>/dev/null")
-        if lines.isEmpty {
-            // 老 ROM 可能不支持 -f
-            lines = await shellLines("pm list packages 2>/dev/null")
-        }
-
-        let disabled = Set(
-            (await shellLines("pm list packages -d 2>/dev/null"))
-                .map { $0.replacingOccurrences(of: "package:", with: "") }
-        )
+        // 1. 优先执行原版唯一的结构化通道：server.apk 输出 JSON（对齐原版 AppManagerHelpers.kt:201-255）
+        AppLabelService.shared.bind()
+        await AppLabelService.shared.warmupIfNeeded()
 
         var parsed: [App] = []
-        for line in lines {
-            let raw = line.replacingOccurrences(of: "package:", with: "")
-            // -f 格式：/data/app/xx/base.apk=com.xxx.yyy
-            var apkPath = ""
-            var pkg = raw
-            if let eq = raw.lastIndex(of: "=") {
-                apkPath = String(raw[raw.startIndex..<eq])
-                pkg = String(raw[raw.index(after: eq)...])
+        let service = AppLabelService.shared
+
+        // 如果 warmupIfNeeded 已经把全车机 package -> label 抓到了
+        if !service.labels.isEmpty {
+            for (pkg, label) in service.labels {
+                let isSystem = pkg.hasPrefix("com.android.") || pkg.hasPrefix("android") || pkg.hasPrefix("com.google.")
+                parsed.append(App(
+                    package: pkg,
+                    apkPath: "",
+                    isSystem: isSystem,
+                    isDisabled: false,
+                    label: label
+                ))
             }
-            guard !pkg.isEmpty else { continue }
+        }
 
-            let isSystem = apkPath.hasPrefix("/system")
-                || apkPath.hasPrefix("/product")
-                || apkPath.hasPrefix("/vendor")
-                || apkPath.hasPrefix("/oem")
+        // 2. 备选通道（如果 server.apk 因特殊 ROM 无法运行，走 pm list 兜底）
+        if parsed.isEmpty {
+            var lines = await shellLines("pm list packages -f 2>/dev/null")
+            if lines.isEmpty {
+                lines = await shellLines("pm list packages 2>/dev/null")
+            }
 
-            parsed.append(App(
-                package: pkg,
-                apkPath: apkPath,
-                isSystem: isSystem,
-                isDisabled: disabled.contains(pkg)
-            ))
+            let disabled = Set(
+                (await shellLines("pm list packages -d 2>/dev/null"))
+                    .map { $0.replacingOccurrences(of: "package:", with: "") }
+            )
+
+            for line in lines {
+                let raw = line.replacingOccurrences(of: "package:", with: "")
+                var apkPath = ""
+                var pkg = raw
+                if let eq = raw.lastIndex(of: "=") {
+                    apkPath = String(raw[raw.startIndex..<eq])
+                    pkg = String(raw[raw.index(after: eq)...])
+                }
+                guard !pkg.isEmpty else { continue }
+
+                let isSystem = apkPath.hasPrefix("/system")
+                    || apkPath.hasPrefix("/product")
+                    || apkPath.hasPrefix("/vendor")
+                    || apkPath.hasPrefix("/oem")
+
+                parsed.append(App(
+                    package: pkg,
+                    apkPath: apkPath,
+                    isSystem: isSystem,
+                    isDisabled: disabled.contains(pkg),
+                    label: service.label(for: pkg) ?? ""
+                ))
+            }
         }
 
         if parsed.isEmpty {
-            errorMessage = "读不到应用列表。pm 命令可能被 ROM 限制。"
-        }
-
-        // 拉真实应用名（原版 warmupAppLabelsIfNeeded）。
-        // 首次会推 server.apk 并跑一遍，之后走磁盘缓存。
-        AppLabelService.shared.bind()
-        await AppLabelService.shared.warmupIfNeeded()
-        let service = AppLabelService.shared
-        parsed = parsed.map { app in
-            var a = app
-            a.label = service.label(for: app.package) ?? ""
-            return a
+            errorMessage = "读不到应用列表。请确认设备已连通。"
         }
 
         apps = parsed.sorted {

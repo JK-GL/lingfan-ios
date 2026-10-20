@@ -66,22 +66,27 @@ final class AppLabelService {
             return
         }
 
-        // 1. 确保 server.apk 在车机上
-        let exists = await shell("ls \(Self.remotePath) 2>/dev/null")
-        if exists.isEmpty || exists.lowercased().contains("no such") {
-            guard let local = Bundle.main.path(forResource: "server", ofType: "apk") else {
-                warmed = true
-                return
+        // 1. 确保 server.apk 在车机上（严格对齐原版 AppManagerHelpers.kt:224，按大小 52365 校验）
+        guard let local = Bundle.main.path(forResource: "server", ofType: "apk") else {
+            warmed = true
+            return
+        }
+        let localSize = (try? FileManager.default.attributesOfItem(atPath: local)[.size] as? Int64) ?? 52365
+
+        let remoteInfo = await shell("ls -l \(Self.remotePath) 2>&1")
+        let needPush = remoteInfo.contains("No such file") ||
+            remoteInfo.contains("not found") ||
+            !remoteInfo.components(separatedBy: .whitespaces).contains(String(localSize))
+
+        if needPush {
+            _ = await shell("rm -f \(Self.remotePath)")
+            let (pushOk, _) = await adb.push(localPath: local, remotePath: Self.remotePath)
+            if pushOk {
+                _ = await shell("chmod 777 \(Self.remotePath) 2>/dev/null")
             }
-            let pushResult = await runCommand(["push", local, Self.remotePath])
-            if pushResult.output.lowercased().contains("error") {
-                warmed = true
-                return
-            }
-            _ = await shell("chmod 777 \(Self.remotePath) 2>/dev/null")
         }
 
-        // 2. 跑服务，逐行解析 JSON
+        // 2. 跑服务，逐行解析 JSON（原版 AppManagerHelpers.kt:238）
         let output = await shell(Self.command)
         for line in output.components(separatedBy: "\n") {
             let t = line.trimmingCharacters(in: .whitespaces)
