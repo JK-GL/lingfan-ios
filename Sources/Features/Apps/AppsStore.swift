@@ -1,3 +1,4 @@
+import UIKit
 import Foundation
 
 /// App 管理数据层
