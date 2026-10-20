@@ -11,6 +11,7 @@ struct ConsoleView: View {
 
     let device: DeviceRecord
 
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var store = ConsoleStore()
 
     var body: some View {
@@ -110,7 +111,10 @@ struct ConsoleView: View {
                                 .foregroundStyle(MDColor.textSecondary)
                         }
                         Button("断开连接") {
-                            Task { await store.disconnect() }
+                            Task {
+                                await store.disconnect()
+                                dismiss()
+                            }
                         }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(MDColor.danger)

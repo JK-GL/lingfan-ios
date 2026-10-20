@@ -50,6 +50,19 @@ final class ConsoleStore: ObservableObject {
             return
         }
 
+        // 核心兜底：确保 ADB 真正处于已连接状态
+        if adb.connectedEndpoint != endpoint {
+            let (ok, msg) = await withCheckedContinuation { (cont: CheckedContinuation<(Bool, String), Never>) in
+                adb.connect(to: endpoint) { ok, msg in
+                    cont.resume(returning: (ok, msg))
+                }
+            }
+            if !ok {
+                errorMessage = "未建立连接（\(endpoint)）：\(msg)"
+                return
+            }
+        }
+
         // 首轮立刻读一次基础信息
         await refreshDeviceInfo()
         await tick()

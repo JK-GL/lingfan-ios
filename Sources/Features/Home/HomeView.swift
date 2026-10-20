@@ -11,6 +11,7 @@ struct HomeView: View {
 
     @StateObject private var store = HomeStore()
     @State private var showDemo = false
+    @State private var selectedDevice: DeviceRecord?
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,14 @@ struct HomeView: View {
             }
             .navigationDestination(isPresented: $showDemo) {
                 ConsoleView(device: DeviceRecord.demo)
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { selectedDevice != nil },
+                set: { if !$0 { selectedDevice = nil } }
+            )) {
+                if let dev = selectedDevice {
+                    ConsoleView(device: dev)
+                }
             }
         }
         .sheet(isPresented: $store.showPairSheet) {
@@ -260,10 +269,17 @@ struct HomeView: View {
             .padding(.top, 8)
 
             ForEach(store.devices) { device in
-                NavigationLink(value: device) {
+                Button {
+                    Task {
+                        if let target = await store.tapDevice(device) {
+                            selectedDevice = target
+                        }
+                    }
+                } label: {
                     deviceCard(device)
                 }
                 .buttonStyle(.plain)
+                .disabled(store.connectingEndpoint != nil)
             }
         }
     }
@@ -290,7 +306,16 @@ struct HomeView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(MDColor.textSecondary)
 
-                        MDStatusChip(status: device.state.status)
+                        if store.connectingEndpoint == device.endpoint {
+                            HStack(spacing: 4) {
+                                ProgressView().scaleEffect(0.65)
+                                Text("连接中…")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(MDColor.info)
+                            }
+                        } else {
+                            MDStatusChip(status: device.state.status)
+                        }
                     }
                 }
 

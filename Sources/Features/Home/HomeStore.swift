@@ -19,6 +19,7 @@ final class HomeStore: ObservableObject {
 
     @Published var isScanning = false
     @Published var isConnecting = false
+    @Published var connectingEndpoint: String?
     @Published var errorMessage: String?
     @Published var showPairSheet = false
 
@@ -98,7 +99,6 @@ final class HomeStore: ObservableObject {
         let host = inputHost.trimmingCharacters(in: .whitespaces)
         guard !host.isEmpty else { return }
         let port = inputPort.trimmingCharacters(in: .whitespaces)
-        // 端口留空时才回填默认 5557，与 Android 版一致
         let endpoint = "\(host):\(port.isEmpty ? "5557" : port)"
 
         isConnecting = true
@@ -107,6 +107,36 @@ final class HomeStore: ObservableObject {
         let (ok, message) = await connectAndAdopt(endpoint: endpoint)
         if !ok {
             errorMessage = message
+        }
+    }
+
+    /// 点击设备卡片（严格对齐原版 HomeScreen.kt:741-765）：
+    /// - 若已连接（connected）或演示设备：直接返回，进控制台
+    /// - 若需配对（pairing）：弹出配对弹窗，不进控制台
+    /// - 若未连接（online / offline）：发起连接，成功后才返回以进入控制台；失败留在首页并展示错误
+    func tapDevice(_ device: DeviceRecord) async -> DeviceRecord? {
+        if device.isDemo || device.state == .connected {
+            return device
+        }
+
+        if device.state == .pairing {
+            inputHost = device.endpoint.components(separatedBy: ":").first ?? ""
+            showPairSheet = true
+            errorMessage = "这是无线配对端口，请在「无线配对」中使用"
+            return nil
+        }
+
+        connectingEndpoint = device.endpoint
+        errorMessage = nil
+        defer { connectingEndpoint = nil }
+
+        let (ok, message) = await connectAndAdopt(endpoint: device.endpoint)
+        if ok {
+            return devices.first(where: { $0.endpoint == device.endpoint && $0.state == .connected })
+                ?? device
+        } else {
+            errorMessage = message
+            return nil
         }
     }
 
