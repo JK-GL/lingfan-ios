@@ -113,6 +113,15 @@ final class AppsStore: ObservableObject {
     // MARK: - 安装（对齐原版 SingleApkInstallCoordinator + InstallChannelSupport）
 
     @Published private(set) var installProgress: String?
+    /// 安装进行中时可取消（原版 SingleApkInstallCoordinator.cancel）
+    @Published private(set) var installRunning = false
+    private var installCancelled = false
+
+    func cancelInstall() {
+        guard installRunning else { return }
+        installCancelled = true
+        installProgress = "正在取消…"
+    }
 
     /// 安装本地 APK 文件。
     /// 完整链路：push → pm install -r → 签名拦截则 pm caninstall + --install-force → 清理暂存
@@ -123,7 +132,14 @@ final class AppsStore: ObservableObject {
         let fileName = (localPath as NSString).lastPathComponent
         busyMessage = "安装 \(fileName)…"
         installProgress = nil
-        defer { busyMessage = nil; installProgress = nil }
+        installCancelled = false
+        installRunning = true
+        defer {
+            busyMessage = nil
+            installProgress = nil
+            installRunning = false
+            installCancelled = false
+        }
 
         if isDemo {
             try? await Task.sleep(nanoseconds: 900_000_000)
@@ -149,6 +165,12 @@ final class AppsStore: ObservableObject {
             return "上传失败：\(pushResult.output)"
         }
 
+        // 用户中途取消：已上传的包清掉，不再安装
+        if installCancelled {
+            _ = await cleanupRemote(remote)
+            return "已取消安装"
+        }
+
         // 2. 标准通道
         installProgress = "标准通道安装…"
         let standard = (await shellLines("pm install -r \"\(remote)\" 2>&1"))
@@ -158,6 +180,11 @@ final class AppsStore: ObservableObject {
             _ = await cleanupRemote(remote)
             await load()
             return nil
+        }
+
+        if installCancelled {
+            _ = await cleanupRemote(remote)
+            return "已取消安装"
         }
 
         // 3. 仅当命中签名强校验时切强制通道

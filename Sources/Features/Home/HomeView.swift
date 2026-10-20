@@ -148,15 +148,33 @@ struct HomeView: View {
 
             Spacer(minLength: 4)
 
-            Button {
-                store.errorMessage = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(MDColor.textTertiary)
-                    .frame(width: 24, height: 24)
+            VStack(spacing: 8) {
+                // 原版连接失败对话框里的「去配对」快捷入口
+                if message.contains("配对") || message.lowercased().contains("authenticate") {
+                    Button {
+                        store.errorMessage = nil
+                        store.showPairSheet = true
+                    } label: {
+                        Text("去配对")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(MDColor.brand)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(MDColor.brand.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    store.errorMessage = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(MDColor.textTertiary)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

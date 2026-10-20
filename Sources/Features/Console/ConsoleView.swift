@@ -19,6 +19,10 @@ struct ConsoleView: View {
 
             ScrollView {
                 VStack(spacing: MDMetric.cardSpacing) {
+                    // 原版：存储使用率 ≥ 80% 时置顶红色警告
+                    if store.storagePercent >= 0.8 {
+                        storageWarningCard
+                    }
                     deviceHeader
                     monitorCard
                     memoryStorageRow
@@ -39,6 +43,31 @@ struct ConsoleView: View {
         .onDisappear {
             store.stopMonitoring()
         }
+    }
+
+    // MARK: - 存储告警
+
+    private var storageWarningCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MDColor.danger)
+                .padding(.top, 1)
+
+            Text("请注意，设备存储使用量已经超过 80%，请及时清理文件，否则会导致设备无法正常使用甚至开机失败！")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(MDColor.danger)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MDMetric.cardRadius, style: .continuous)
+                .fill(MDColor.danger.opacity(0.10))
+        )
     }
 
     // MARK: - 设备头

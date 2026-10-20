@@ -291,13 +291,19 @@ struct LinkView: View {
                 HStack {
                     sectionTitle("天气数据源", icon: "cloud.sun.fill", tint: MDColor.info)
                     Spacer()
-                    Button("修改") {
-                        keyInput = store.weatherApiKey
-                        hostInput = store.weatherHost
-                        showWeatherEdit = true
+                    if activationLocked {
+                        Text("需桌面激活")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(MDColor.warning)
+                    } else {
+                        Button("修改") {
+                            keyInput = store.weatherApiKey
+                            hostInput = store.weatherHost
+                            showWeatherEdit = true
+                        }
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(MDColor.brand)
                     }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(MDColor.brand)
                 }
 
                 kvRow("API Key", store.weatherApiKey.isEmpty ? "未配置" : maskKey(store.weatherApiKey))
@@ -354,7 +360,15 @@ struct LinkView: View {
     private var voiceCard: some View {
         MDCard {
             VStack(alignment: .leading, spacing: 10) {
-                sectionTitle("语音定制", icon: "waveform", tint: MDColor.remote)
+                HStack {
+                    sectionTitle("语音定制", icon: "waveform", tint: MDColor.remote)
+                    Spacer()
+                    if activationLocked {
+                        Text("需桌面激活")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(MDColor.warning)
+                    }
+                }
 
                 if store.voiceItems.isEmpty {
                     Text(store.voiceSnapshot.message.isEmpty
@@ -427,9 +441,10 @@ struct LinkView: View {
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(MDColor.brand)
+                        .foregroundStyle(activationLocked ? MDColor.textTertiary : MDColor.brand)
                 }
                 .buttonStyle(.plain)
+                .disabled(activationLocked)
 
                 if item.hasCustom {
                     Button {
@@ -492,6 +507,11 @@ struct LinkView: View {
         } catch {
             voiceError = "播放失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 原版 activationLocked：天气和语音要求桌面已激活且版本达标
+    private var activationLocked: Bool {
+        store.versionTooLow || !store.activated
     }
 
     // MARK: - 图标

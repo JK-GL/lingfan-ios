@@ -34,7 +34,22 @@ struct AppsView: View {
                         Text(store.installProgress ?? busy)
                             .font(.system(size: 12))
                             .foregroundStyle(MDColor.textSecondary)
-                        Spacer(minLength: 0)
+                        Spacer(minLength: 4)
+
+                        // 原版安装过程可取消
+                        if store.installRunning {
+                            Button {
+                                store.cancelInstall()
+                            } label: {
+                                Text("取消")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(MDColor.danger)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(MDColor.danger.opacity(0.10)))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, MDMetric.pagePadding)
                     .padding(.bottom, 8)
