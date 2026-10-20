@@ -28,7 +28,6 @@ final class ToolsStore: ObservableObject {
     /// 截图结果，可直接放进 Image(uiImage:)
     @Published var screenshot: PlatformImage?
     @Published private(set) var logText: String = ""
-    @Published private(set) var deviceInfoText: String = ""
 
     var isDemo = false
     private let adb = AdbService.shared
@@ -85,12 +84,29 @@ final class ToolsStore: ObservableObject {
             return
         }
 
-        let lines = await shellLines(
+        // 原版 ToolItem.kt:297-298 两条都跑，然后从中提取 pkg/activity 对：
+        //   dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp'
+        //   dumpsys activity activities | grep mResumedActivity
+        let windowLines = await shellLines(
             "dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp'"
         )
-        topWindowText = lines.isEmpty
+        let activityLines = await shellLines(
+            "dumpsys activity activities | grep mResumedActivity"
+        )
+
+        var combined: [String] = []
+        if !windowLines.isEmpty {
+            combined.append("== window ==")
+            combined.append(contentsOf: windowLines)
+        }
+        if !activityLines.isEmpty {
+            combined.append("== activity ==")
+            combined.append(contentsOf: activityLines)
+        }
+
+        topWindowText = combined.isEmpty
             ? "没有读到窗口信息（部分 ROM 限制了 dumpsys 权限）"
-            : lines.joined(separator: "\n")
+            : combined.joined(separator: "\n")
         lastMessage = nil
     }
 
@@ -432,35 +448,6 @@ final class ToolsStore: ObservableObject {
     private static func firstNumber(_ line: String) -> Int64 {
         guard let r = line.range(of: #"\d+"#, options: .regularExpression) else { return 0 }
         return Int64(line[r]) ?? 0
-    }
-
-    // MARK: - 设备状态快照
-
-    func loadSnapshot() async {
-        running = true
-        defer { running = false }
-
-        if isDemo {
-            deviceInfoText = DemoContent.makeSnapshot()
-            return
-        }
-
-        let cmd = [
-            "echo '== 型号 =='",
-            "getprop ro.product.model",
-            "echo '== 系统 =='",
-            "getprop ro.build.version.release",
-            "echo '== 分辨率 =='",
-            "wm size",
-            "echo '== 运行时长 =='",
-            "uptime",
-            "echo '== 电量 =='",
-            "dumpsys battery | grep -E 'level|status'",
-            "echo '== 温度 =='",
-            "cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null",
-        ].joined(separator: "; ")
-
-        deviceInfoText = (await shellLines(cmd)).joined(separator: "\n")
     }
 
     // MARK: - 电源类

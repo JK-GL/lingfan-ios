@@ -104,6 +104,8 @@ struct DeviceInfo {
     var brightness: String = ""
     /// 当前活跃用户（am get-current-user）
     var currentUser: String = ""
+    /// adb shell 身份（`id` 输出，含 uid=0 说明是 root）
+    var shellIdentity: String = ""
 
     var displayName: String {
         let parts = [brand, model].filter { !$0.isEmpty }

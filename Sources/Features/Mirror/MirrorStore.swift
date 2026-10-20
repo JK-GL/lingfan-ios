@@ -76,17 +76,10 @@ final class MirrorStore: ObservableObject {
     }
 
     func stop() {
-        let wasRunning = running
         task?.cancel()
         task = nil
         running = false
-
-        // 原版退出页面不恢复常亮，这里补上 —— 否则投屏看完车机永远不熄屏。
-        if wasRunning && !isDemo {
-            Task { [weak self] in
-                _ = await self?.shellLines("svc power stayon false")
-            }
-        }
+        // 原版 ScreenMirrorScreen.kt 只设 stayon true，退出不恢复，这里保持一致
     }
 
     // MARK: - 单帧

@@ -15,6 +15,7 @@ struct LinkView: View {
     @State private var keyInput = ""
     @State private var hostInput = ""
     @State private var showRaw = false
+    @State private var showLogPreview = false
 
     var body: some View {
         ZStack {
@@ -33,6 +34,10 @@ struct LinkView: View {
                     } else if let err = store.errorMessage {
                         noticeCard(err, tint: MDColor.warning)
                     }
+
+                    // 日志抓取不依赖激活（原版 requiresActivation = false），
+                    // 只要连上设备就能抓，所以放在 available 判断之外。
+                    logCard
                 }
                 .padding(.horizontal, MDMetric.pagePadding)
                 .padding(.top, 8)
@@ -69,6 +74,13 @@ struct LinkView: View {
         }
         .sheet(isPresented: $showRaw) {
             rawSheet
+        }
+        .sheet(isPresented: $showLogPreview) {
+            LogPreviewSheet(
+                text: store.logPreview,
+                exportPath: store.logExportPath,
+                isPresented: $showLogPreview
+            )
         }
     }
 
@@ -310,6 +322,74 @@ struct LinkView: View {
 
     // MARK: - 原始输出
 
+    // MARK: - 日志抓取
+
+    private var logCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("日志抓取", icon: "doc.text.magnifyingglass", tint: MDColor.file)
+
+                Text("抓取近 3 分钟内菱粉桌面相关日志（按进程 PID 与包名双重匹配）")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !store.logMessage.isEmpty {
+                    Text(store.logMessage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(store.logMatchedCount > 0 ? MDColor.success : MDColor.warning)
+                    if store.logScannedCount > 0 {
+                        Text("扫描 \(store.logScannedCount) 行 · 命中 \(store.logMatchedCount) 条")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MDColor.textTertiary)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await store.captureLogs() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if store.logCapturing {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "arrow.down.doc")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            Text(store.logCapturing ? "抓取中…" : "抓取日志")
+                                .font(.system(size: 15, weight: .medium))
+                        }
+                        .foregroundStyle(MDColor.file)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                .stroke(MDColor.file.opacity(0.4), lineWidth: 1.2)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.logCapturing)
+
+                    Button {
+                        showLogPreview = true
+                    } label: {
+                        Text("查看")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(store.logPreview.isEmpty
+                                             ? MDColor.textTertiary : MDColor.textSecondary)
+                            .frame(width: 76, height: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                    .stroke(MDColor.textTertiary.opacity(0.5), lineWidth: 1.2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.logPreview.isEmpty)
+                }
+            }
+        }
+    }
+
     private var rawCard: some View {
         MDCard(padding: 12) {
             HStack {
@@ -381,6 +461,56 @@ struct LinkView: View {
                 .textSelection(.enabled)
                 .lineLimit(2)
             Spacer(minLength: 0)
+        }
+    }
+}
+
+// MARK: - 日志预览
+
+struct LogPreviewSheet: View {
+    let text: String
+    let exportPath: String?
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(MDColor.textPrimary)
+                        .textSelection(.enabled)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .navigationTitle("菱粉日志")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MDColor.background, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 14) {
+                        Button {
+                            UIPasteboard.general.string = text
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .foregroundStyle(MDColor.brand)
+                        }
+                        if let path = exportPath {
+                            ShareLink(item: URL(fileURLWithPath: path)) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundStyle(MDColor.brand)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

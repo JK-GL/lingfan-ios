@@ -65,8 +65,25 @@ final class AdbService: ObservableObject {
                 && (lower.contains("connected to ") || lower.contains("already connected to"))
 
             if ok {
-                self?.connectedEndpoint = endpoint
-                self?.lastError = nil
+                // 原版 AdbConnectionManager.createVerifiedConnectionOrThrow：
+                // `connected to` 只说明 socket 建起来了，必须再跑一条
+                // `echo connection_test` 才算真连通（否则 shell 通道可能不可用）。
+                self?.runAsync(["shell", "echo connection_test"]) { probe in
+                    let probeText = probe.output
+                    let probeOk = probeText.contains("connection_test")
+                    if probeOk {
+                        self?.connectedEndpoint = endpoint
+                        self?.lastError = nil
+                        completion(true, text)
+                    } else {
+                        let message = "端口连通但 shell 通道不可用："
+                            + (probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                               ? "设备无响应" : probeText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        self?.lastError = message
+                        completion(false, message)
+                    }
+                }
+                return
             } else {
                 let message: String
                 if authFailed {
@@ -80,7 +97,6 @@ final class AdbService: ObservableObject {
                 completion(false, message)
                 return
             }
-            completion(true, text)
         }
     }
 

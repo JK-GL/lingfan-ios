@@ -51,6 +51,77 @@ final class LinkStore: ObservableObject {
         self.isDemo = isDemo
     }
 
+    // MARK: - 日志抓取（原版 LingFansLogCaptureSupport）
+
+    @Published private(set) var logCapturing = false
+    @Published private(set) var logPreview = ""
+    @Published private(set) var logMessage = ""
+    @Published private(set) var logExportPath: String?
+    @Published private(set) var logMatchedCount = 0
+    @Published private(set) var logScannedCount = 0
+
+    /// 抓取近 3 分钟菱粉桌面相关日志。
+    /// 三级回退全部在 LingFansLogCapture 里，这里只负责接 shell 和落盘。
+    func captureLogs() async {
+        logCapturing = true
+        logMessage = ""
+        logPreview = ""
+        logExportPath = nil
+        defer { logCapturing = false }
+
+        if isDemo {
+            let now = Date()
+            let f = LingFansLog.summaryFormatter
+            let start = f.string(from: now.addingTimeInterval(-180))
+            let end = f.string(from: now)
+            logPreview = """
+            LingFans 日志抓取
+            时间范围: \(start) 至 \(end)
+            目标包名: \(Self.launcherPackage)
+            结果摘要: 已抓到 6 条菱粉桌面相关日志
+            logcat 回退: 未触发
+            命中条数: 6
+
+            10-19 20:18:04.123  4211  4250 I Launcher: voice customization loaded
+            10-19 20:18:06.882  4211  4211 I Launcher: icon refresh requested
+            10-19 20:18:11.201  4211  4302 D Launcher: weather api key applied
+            10-19 20:18:15.640  4211  4211 I Launcher: activation status ok
+            10-19 20:18:19.004  4211  4250 W Launcher: preview cache miss
+            10-19 20:18:22.377  4211  4211 I Launcher: ready
+            """
+            logMatchedCount = 6
+            logScannedCount = 4821
+            logMessage = "已抓到 6 条菱粉桌面相关日志（演示）"
+            return
+        }
+
+        let capture = LingFansLogCapture { [weak self] cmd in
+            guard let self else { return [] }
+            return await self.shellLines(cmd)
+        }
+        let result = await capture.run()
+
+        logPreview = result.previewText
+        logMessage = result.message
+        logMatchedCount = result.matchedCount
+        logScannedCount = result.scannedCount
+        logExportPath = writeLogExport(result.exportText)
+    }
+
+    /// 导出到 Documents/pulled，供分享面板取用
+    private func writeLogExport(_ text: String) -> String? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HHmmss"
+        let url = FilesStore.localPullDirectory()
+            .appendingPathComponent("lingfans_log_\(formatter.string(from: Date())).txt")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url.path
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - 探测
 
     func probe() async {

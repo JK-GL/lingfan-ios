@@ -256,6 +256,34 @@ final class ProcessStore: ObservableObject {
         return nil
     }
 
+    /// 按包名整组强停（原版 ProcessInfo.kt:689 `am force-stop <pkg>`）。
+    /// 比逐个 kill 干净：一次让系统回收该 App 的全部进程。
+    func forceStopGroup(_ group: Group) async -> String? {
+        if isDemo {
+            groups.removeAll { $0.packageName == group.packageName }
+            killedMessage = "已停止 \(group.packageName)（演示）"
+            return nil
+        }
+
+        let lines = await shellLines("am force-stop \(group.packageName) 2>&1")
+        let text = lines.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        let lower = text.lowercased()
+        if lower.contains("error") || lower.contains("exception") || lower.contains("denied") {
+            return "停止失败：\(text)"
+        }
+
+        // 复核：强停后不应再有同名进程
+        let check = await shellLines("ps -A -o NAME | grep -c '\(group.packageName)'")
+        let remaining = Int(check.joined().trimmingCharacters(in: .whitespaces)) ?? 0
+        if remaining > 0 {
+            return "am force-stop 已执行，但仍有 \(remaining) 个进程存活（可能是守护进程）"
+        }
+
+        groups.removeAll { $0.packageName == group.packageName }
+        killedMessage = "已停止 \(group.packageName)"
+        return nil
+    }
+
     private func removeLocally(_ pid: Int) {
         groups = groups.compactMap { g in
             var p = g.processes

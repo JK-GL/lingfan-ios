@@ -265,8 +265,22 @@ final class FilesStore: ObservableObject {
             errorMessage = "上传失败：\(text)"
             return false
         }
+
+        // 原版 FileManagerScreen.kt:584 —— push 后按本机文件的权限位 chmod 远程。
+        // 从「文件」App 选来的文件常是 0600，不改权限车机上别的 App 读不到。
+        if let mode = Self.posixMode(of: localPath) {
+            _ = await shellLines("chmod \(mode) '\(remote)' 2>&1")
+        }
+
         await load()
         return true
+    }
+
+    /// 读本机文件的 POSIX 权限位，转成 chmod 用的八进制字符串
+    private static func posixMode(of path: String) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let perm = attrs[.posixPermissions] as? NSNumber else { return nil }
+        return String(format: "%03o", perm.intValue & 0o777)
     }
 
     // MARK: - 删除

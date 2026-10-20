@@ -28,7 +28,6 @@ struct ToolsView: View {
                     recordCard
                     topWindowCard
                     perfCard
-                    snapshotCard
                     logCard
                     powerCard
 
@@ -62,7 +61,6 @@ struct ToolsView: View {
         .toolbarBackground(MDColor.background, for: .navigationBar)
         .task {
             store.bind(isDemo: device.isDemo)
-            await store.loadSnapshot()
         }
         .sheet(isPresented: $showLog) {
             LogSheet(text: store.logText, isPresented: $showLog)
@@ -282,36 +280,6 @@ struct ToolsView: View {
                     )
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var snapshotCard: some View {
-        MDCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    cardTitle(icon: "info.circle.fill", tint: MDColor.tool, title: "设备状态快照")
-                    Spacer()
-                    Button {
-                        Task { await store.loadSnapshot() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(MDColor.tool)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text(store.deviceInfoText.isEmpty ? "读取中…" : store.deviceInfoText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(MDColor.textPrimary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
-                            .fill(MDColor.surfaceHigh)
-                    )
             }
         }
     }

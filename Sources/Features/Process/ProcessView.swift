@@ -11,7 +11,9 @@ struct ProcessView: View {
 
     @State private var pendingKill: ProcessStore.Proc?
     @State private var forceTarget: ProcessStore.Proc?
+    @State private var pendingStopGroup: ProcessStore.Group?
     @State private var showKillConfirm = false
+    @State private var showStopGroupConfirm = false
     @State private var killError: String?
     @State private var expanded: Set<String> = []
 
@@ -54,6 +56,19 @@ struct ProcessView: View {
         .task {
             store.bind(isDemo: device.isDemo)
             await store.load()
+        }
+        .alert("停止整个应用", isPresented: $showStopGroupConfirm) {
+            Button("取消", role: .cancel) { pendingStopGroup = nil }
+            Button("停止", role: .destructive) {
+                guard let g = pendingStopGroup else { return }
+                Task { _ = await store.forceStopGroup(g) }
+                pendingStopGroup = nil
+            }
+        } message: {
+            if let g = pendingStopGroup {
+                Text("将对 \(g.packageName) 执行 `am force-stop`，"
+                     + "一次性回收它的 \(g.processCount) 个进程。")
+            }
         }
         .alert("结束进程", isPresented: $showKillConfirm) {
             Button("取消", role: .cancel) { pendingKill = nil }
@@ -212,17 +227,33 @@ struct ProcessView: View {
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(MDColor.textPrimary)
 
-                        if let main = group.processes.first(where: { $0.isMainProcess }) {
+                        HStack(spacing: 6) {
+                            if let main = group.processes.first(where: { $0.isMainProcess }) {
+                                Button {
+                                    pendingKill = main
+                                    showKillConfirm = true
+                                } label: {
+                                    Text("结束")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(MDColor.danger)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 3)
+                                        .background(Capsule().fill(MDColor.danger.opacity(0.10)))
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            // 原版 ProcessInfo.kt:689 —— 按包名整组强停
                             Button {
-                                pendingKill = main
-                                showKillConfirm = true
+                                pendingStopGroup = group
+                                showStopGroupConfirm = true
                             } label: {
-                                Text("结束")
+                                Text("强停")
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(MDColor.danger)
+                                    .foregroundStyle(MDColor.process)
                                     .padding(.horizontal, 9)
                                     .padding(.vertical, 3)
-                                    .background(Capsule().fill(MDColor.danger.opacity(0.10)))
+                                    .background(Capsule().fill(MDColor.process.opacity(0.10)))
                             }
                             .buttonStyle(.plain)
                         }

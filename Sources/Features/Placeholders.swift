@@ -47,6 +47,10 @@ struct InfoView: View {
                         infoRow("充电", info.isCharging ? "正在充电" : "未充电")
                         infoRow("屏幕亮度", info.brightness.isEmpty ? "—" : info.brightness)
                         infoRow("当前用户", info.currentUser.isEmpty ? "—" : info.currentUser)
+                        if !info.shellIdentity.isEmpty {
+                            infoRow("Shell 权限", info.shellIdentity.contains("uid=0")
+                                    ? "root" : info.shellIdentity)
+                        }
                         if !info.thermalText.isEmpty {
                             infoRow("温度", info.thermalText)
                         }
@@ -140,8 +144,15 @@ struct InfoView: View {
         let acPowered = await shell("dumpsys battery | grep 'AC powered'")
         d.isCharging = acPowered.lowercased().contains("true")
 
-        // 温度：优先 thermalservice，比 thermal_zone 更通用
-        let thermal = await shellMultiple("dumpsys thermalservice | grep -m3 -i 'temperature'")
+        // 温度：优先 thermalservice，读不到再退 thermal_zone（原版两路都有）
+        var thermal = await shellMultiple("dumpsys thermalservice | grep -m3 -i 'temperature'")
+        if thermal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            thermal = await shellMultiple(
+                "for f in /sys/class/thermal/thermal_zone*; do "
+                + "type=$(cat $f/type 2>/dev/null); temp=$(cat $f/temp 2>/dev/null); "
+                + "if [ -n \"$temp\" ]; then echo \"$type:$temp\"; fi; done"
+            )
+        }
         d.thermalText = thermal
 
         // 当前前台界面
@@ -155,6 +166,9 @@ struct InfoView: View {
 
         // 当前活跃用户（原版 AppStartupManager.kt:207）
         d.currentUser = await shell("am get-current-user")
+
+        // adb shell 身份（原版 DeviceAdbLock.probeIdentity 用 `id` 判断是否 root）
+        d.shellIdentity = await shell("id")
 
         info = d
         loading = false

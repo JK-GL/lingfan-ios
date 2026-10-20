@@ -18,6 +18,8 @@ struct AppsView: View {
     @State private var showImporter = false
     @State private var showDetail = false
     @State private var detailTarget: AppsStore.App?
+    @State private var showStartup = false
+    @State private var startupTarget: AppsStore.App?
 
     var body: some View {
         ZStack {
@@ -103,6 +105,11 @@ struct AppsView: View {
         }
         .sheet(isPresented: $showDetail) {
             AppDetailSheet(text: store.detailText, isPresented: $showDetail)
+        }
+        .sheet(isPresented: $showStartup) {
+            if let app = startupTarget {
+                AppStartupSheet(store: store, app: app, isPresented: $showStartup)
+            }
         }
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(MDColor.background, for: .navigationBar)
@@ -260,6 +267,14 @@ struct AppsView: View {
                     }
 
                     Button {
+                        startupTarget = app
+                        showStartup = true
+                        Task { await store.loadStartup(app) }
+                    } label: {
+                        Label("自启动管理", systemImage: "power.circle")
+                    }
+
+                    Button {
                         Task {
                             if let err = await store.clearData(app) {
                                 actionError = err
@@ -358,6 +373,164 @@ struct AppDetailSheet: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - 自启动管理
+
+struct AppStartupSheet: View {
+    @ObservedObject var store: AppsStore
+    let app: AppsStore.App
+    @Binding var isPresented: Bool
+
+    private var info: AppStartupInfo { store.startupInfo }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+
+                ScrollView {
+                    VStack(spacing: MDMetric.cardSpacing) {
+                        summaryCard
+
+                        if let msg = store.startupMessage {
+                            Text(msg)
+                                .font(.system(size: 12))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
+                                        .fill(MDColor.surfaceHigh)
+                                )
+                        }
+
+                        if store.startupLoading {
+                            MDCard {
+                                VStack(spacing: 10) {
+                                    ProgressView()
+                                    Text("读取组件清单…")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(MDColor.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 20)
+                            }
+                        } else if info.status == .none {
+                            emptyCard("这个应用没有监听开机广播的组件")
+                        } else if info.status == .error {
+                            emptyCard(info.errorMessage.isEmpty ? "检测失败" : info.errorMessage)
+                        } else {
+                            ForEach(info.receivers) { receiver in
+                                receiverCard(receiver)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, MDMetric.pagePadding)
+                    .padding(.top, 8)
+                    .padding(.bottom, 32)
+                }
+            }
+            .navigationTitle("自启动管理")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MDColor.background, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { await store.loadStartup(app) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(MDColor.brand)
+                    }
+                    .disabled(store.startupLoading)
+                }
+            }
+        }
+    }
+
+    private var summaryCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(app.displayName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(MDColor.textPrimary)
+                    .lineLimit(1)
+                Text(app.package)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(MDColor.textSecondary)
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    Text(info.summary)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(info.hasEnabled ? MDColor.warning : MDColor.success)
+                    if info.status == .found {
+                        Text("· 共 \(info.receivers.count) 个组件")
+                            .font(.system(size: 12))
+                            .foregroundStyle(MDColor.textSecondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private func receiverCard(_ receiver: AppStartupReceiver) -> some View {
+        let busy = store.startupBusyComponent == receiver.componentName
+
+        return MDCard(padding: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(receiver.shortName)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(MDColor.textPrimary)
+                        .lineLimit(1)
+
+                    Text(receiver.actionLabels.joined(separator: " · "))
+                        .font(.system(size: 11))
+                        .foregroundStyle(MDColor.textSecondary)
+
+                    Text(receiver.componentName)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(MDColor.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 4)
+
+                if busy {
+                    ProgressView().scaleEffect(0.8)
+                } else {
+                    Toggle("", isOn: Binding(
+                        get: { receiver.enabled },
+                        set: { newValue in
+                            Task {
+                                await store.toggleStartup(app, receiver: receiver, enabled: newValue)
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(MDColor.app)
+                }
+            }
+        }
+    }
+
+    private func emptyCard(_ text: String) -> some View {
+        MDCard {
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(MDColor.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

@@ -186,26 +186,6 @@ enum DemoContent {
         """
     }
 
-    // MARK: - 状态快照
-
-    static func makeSnapshot() -> String {
-        """
-        == 型号 ==
-        alps spm8666p2_64_car
-        == 系统 ==
-        9
-        == 分辨率 ==
-        Physical size: 1280x720
-        == 运行时长 ==
-         01:23:45 up 3 days, 4:12, 0 users, load average: 1.24, 1.08, 0.96
-        == 电量 ==
-            level: 87
-           status: 2
-        == 温度 ==
-        46900
-        """
-    }
-
     // MARK: - 文件树
 
     struct DemoFile: Identifiable {

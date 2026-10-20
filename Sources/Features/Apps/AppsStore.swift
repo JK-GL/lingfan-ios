@@ -319,20 +319,9 @@ final class AppsStore: ObservableObject {
 
     // MARK: - 停用 / 启用
 
-    /// 对齐原版 resolveUserCandidates：先取真实当前用户，再依次退 "current" 和 "0"。
-    /// 车机常见多用户，硬编码 --user 0 在部分机型上会 unknown user。
-    private func resolveUserCandidates() async -> [String] {
-        let raw = await shellLines("am get-current-user 2>/dev/null").joined(separator: " ")
-        var list: [String] = []
-        if let r = raw.range(of: #"\d+"#, options: .regularExpression) {
-            list.append(String(raw[r]))
-        }
-        list.append("current")
-        list.append("0")
-        var seen = Set<String>()
-        return list.filter { seen.insert($0).inserted }
-    }
-
+    /// 原版 AppManagerScreen.kt:802 就是不带 --user：
+    ///   `pm disable-user <pkg>` / `pm enable <pkg>`
+    /// 带 user 参数的是「自启动管理」里的组件级开关，不是这里。
     func setDisabled(_ app: App, disabled: Bool) async -> String? {
         busyMessage = disabled ? "停用 \(app.displayName)…" : "启用 \(app.displayName)…"
         defer { busyMessage = nil }
@@ -346,28 +335,22 @@ final class AppsStore: ObservableObject {
             return nil
         }
 
-        let users = await resolveUserCandidates()
-        var lastOutput = ""
+        let cmd = disabled
+            ? "pm disable-user \(app.package) 2>&1"
+            : "pm enable \(app.package) 2>&1"
+        let text = (await shellLines(cmd))
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
 
-        for user in users {
-            let cmd = disabled
-                ? "pm disable-user --user \(user) \(app.package) 2>&1"
-                : "pm enable --user \(user) \(app.package) 2>&1"
-            let text = (await shellLines(cmd))
-                .joined(separator: " ")
-                .trimmingCharacters(in: .whitespaces)
-            lastOutput = text
+        let lower = text.lowercased()
+        let rejected = lower.contains("unknown user")
+            || lower.contains("does not exist")
+            || lower.contains("error")
+            || lower.contains("exception")
+            || lower.contains("denied")
+            || lower.contains("not allowed")
 
-            let lower = text.lowercased()
-            let rejected = lower.contains("unknown user")
-                || lower.contains("does not exist")
-                || lower.contains("error")
-                || lower.contains("exception")
-                || lower.contains("denied")
-                || lower.contains("not allowed")
-
-            if rejected { continue }
-
+        if !rejected {
             if let i = apps.firstIndex(where: { $0.package == app.package }) {
                 let o = apps[i]
                 apps[i] = App(package: o.package, apkPath: o.apkPath,
@@ -375,8 +358,78 @@ final class AppsStore: ObservableObject {
             }
             return nil
         }
+        return "操作失败：\(text.isEmpty ? "无输出" : text)"
+    }
 
-        return "操作失败：\(lastOutput.isEmpty ? "无输出" : lastOutput)"
+    // MARK: - 自启动管理（原版 AppStartupManagementDialog）
+
+    @Published private(set) var startupInfo = AppStartupInfo()
+    @Published private(set) var startupLoading = false
+    @Published private(set) var startupBusyComponent: String?
+    @Published private(set) var startupMessage: String?
+
+    func loadStartup(_ app: App) async {
+        startupLoading = true
+        startupMessage = nil
+        startupInfo = AppStartupInfo(status: .loading)
+        defer { startupLoading = false }
+
+        if isDemo {
+            startupInfo = AppStartupInfo(
+                status: .found,
+                receivers: [
+                    AppStartupReceiver(
+                        componentName: "\(app.package)/.BootReceiver",
+                        actions: ["android.intent.action.BOOT_COMPLETED"],
+                        enabled: true
+                    ),
+                    AppStartupReceiver(
+                        componentName: "\(app.package)/.QuickBootReceiver",
+                        actions: ["android.intent.action.QUICKBOOT_POWERON"],
+                        enabled: false
+                    ),
+                ]
+            )
+            return
+        }
+
+        startupInfo = await AppStartup.load(packageName: app.package) { [weak self] cmd in
+            guard let self else { return [] }
+            return await self.shellLines(cmd)
+        }
+    }
+
+    func toggleStartup(_ app: App, receiver: AppStartupReceiver, enabled: Bool) async {
+        startupBusyComponent = receiver.componentName
+        startupMessage = nil
+        defer { startupBusyComponent = nil }
+
+        if isDemo {
+            if let i = startupInfo.receivers.firstIndex(where: { $0.componentName == receiver.componentName }) {
+                let o = startupInfo.receivers[i]
+                startupInfo.receivers[i] = AppStartupReceiver(
+                    componentName: o.componentName, actions: o.actions, enabled: enabled
+                )
+            }
+            startupMessage = enabled ? "已恢复自启动" : "已禁用自启动"
+            return
+        }
+
+        let result = await AppStartup.setEnabled(
+            packageName: app.package,
+            receiver: receiver,
+            enabled: enabled
+        ) { [weak self] cmd in
+            guard let self else { return [] }
+            return await self.shellLines(cmd)
+        }
+
+        if let info = result.info {
+            startupInfo = info
+        }
+        startupMessage = result.success
+            ? "\(result.message)（user=\(result.user)）"
+            : result.message
     }
 
     // MARK: - 提取 APK
