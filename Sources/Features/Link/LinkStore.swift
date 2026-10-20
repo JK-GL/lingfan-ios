@@ -37,9 +37,10 @@ final class LinkStore: ObservableObject {
     @Published private(set) var weatherApiKey = ""
     @Published private(set) var weatherHost = ""
 
-    @Published private(set) var voiceItems: [String: String] = [:]
+    @Published private(set) var voiceSnapshot = LingFansVoiceSnapshot()
     @Published private(set) var iconSnapshot = LingFansIconSnapshot()
 
+    var voiceItems: [LingFansVoiceItem] { voiceSnapshot.items }
     var iconItems: [LingFansIconItem] { iconSnapshot.items }
 
     @Published private(set) var lastRawOutput = ""
@@ -200,7 +201,11 @@ final class LinkStore: ObservableObject {
     }
 
     func loadVoice() async {
-        voiceItems = await request(method: "getVoiceCustomizations") ?? [:]
+        let values = await request(method: "getVoiceCustomizations")
+        voiceSnapshot = LingFansVoicePayload.snapshot(
+            from: values,
+            fallbackMessage: errorMessage ?? "读取菱粉语音配置失败"
+        )
     }
 
     func loadIcons() async {
@@ -240,9 +245,21 @@ final class LinkStore: ObservableObject {
     func resetVoice(key: String) async -> Bool {
         busyMessage = "重置语音定制…"
         defer { busyMessage = nil }
-        _ = await request(method: "resetVoiceCustomization", arg: key, extras: [])
-        await loadVoice()
-        return true
+
+        if isDemo {
+            if let i = voiceSnapshot.items.firstIndex(where: { $0.key == key }) {
+                let o = voiceSnapshot.items[i]
+                voiceSnapshot.items[i] = LingFansVoiceItem(key: o.key, title: o.title, path: "")
+            }
+            return true
+        }
+
+        let values = await request(method: "resetVoiceCustomization", arg: key, extras: [])
+        let snap = LingFansVoicePayload.snapshot(
+            from: values, fallbackMessage: errorMessage ?? "恢复默认语音失败"
+        )
+        if snap.success { voiceSnapshot = snap } else { await loadVoice() }
+        return snap.success
     }
 
     /// 原版 318 行：arg = packageName，extras 也带 packageName
@@ -480,16 +497,115 @@ final class LinkStore: ObservableObject {
     func exportVoicePreview(key: String) async -> String? {
         busyMessage = "导出语音预览…"
         defer { busyMessage = nil }
-        let r = await request(method: "exportVoicePreview", arg: key, extras: [])
-        return r?["path"]
+        return await fetchPreviewPath(key: key)
+    }
+
+    /// exportVoicePreview 的返回值同样是 payloadBase64，
+    /// 里面才有 previewPath（原版 toVoicePreviewResult）
+    private func fetchPreviewPath(key: String) async -> String? {
+        let values = await request(method: "exportVoicePreview", arg: key, extras: [])
+        guard let values else { return nil }
+        guard let decoded = LingFansVoicePayload.decodePreview(values["payloadBase64"] ?? "") else {
+            return nil
+        }
+        return decoded.previewPath.isEmpty ? nil : decoded.previewPath
+    }
+
+    /// 拉预览到本机，供手机端播放
+    func pullVoicePreview(key: String) async -> String? {
+        busyMessage = "取回预览…"
+        defer { busyMessage = nil }
+
+        if isDemo { return nil }
+
+        guard let remote = await fetchPreviewPath(key: key) else { return nil }
+        let ext = (remote as NSString).pathExtension.isEmpty
+            ? "mp3" : (remote as NSString).pathExtension
+
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(key)_preview.\(ext)")
+        try? FileManager.default.removeItem(at: dest)
+
+        _ = await runCommand(["pull", remote, dest.path])
+        return FileManager.default.fileExists(atPath: dest.path) ? dest.path : nil
+    }
+
+    /// 上传自定义语音并写入配置。
+    /// 原版 uploadLingFansVoiceFile + updateLingFansVoiceCustomization：
+    ///   push → chmod 644 → ls 校验 → setVoiceCustomization(arg=key, extras=[path])
+    func uploadVoice(key: String, localPath: String) async -> String? {
+        guard !voiceSnapshot.voiceBaseDir.isEmpty else {
+            return "车机未返回可写入的语音目录"
+        }
+
+        let ext = (localPath as NSString).pathExtension.lowercased()
+        guard LingFansVoice.audioExtensions.contains(ext) else {
+            return "仅支持 mp3、wav、ogg、flac、aac、m4a、3gp 音频文件"
+        }
+        guard FileManager.default.isReadableFile(atPath: localPath) else {
+            return "音频文件不可读"
+        }
+
+        busyMessage = "上传语音…"
+        defer { busyMessage = nil }
+
+        if isDemo {
+            if let i = voiceSnapshot.items.firstIndex(where: { $0.key == key }) {
+                let o = voiceSnapshot.items[i]
+                voiceSnapshot.items[i] = LingFansVoiceItem(
+                    key: o.key, title: o.title, path: "/data/voice/\(key).\(ext)"
+                )
+            }
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let stamp = formatter.string(from: Date())
+
+        let dir = voiceSnapshot.voiceBaseDir.hasSuffix("/")
+            ? String(voiceSnapshot.voiceBaseDir.dropLast())
+            : voiceSnapshot.voiceBaseDir
+        let remotePath = "\(dir)/\(key)_\(stamp).\(ext)"
+
+        _ = await shellLines("mkdir -p \(Self.quote(dir))")
+
+        let pushResult = await runCommand(["push", localPath, remotePath])
+        let pushText = pushResult.output.lowercased()
+        if pushText.contains("error") || pushText.contains("no such") || pushText.contains("failed") {
+            return "音频上传失败：\(pushResult.output)"
+        }
+
+        _ = await shellLines("chmod 644 \(Self.quote(remotePath))")
+        let verify = await shellLines("ls \(Self.quote(remotePath)) 2>&1")
+        if verify.isEmpty || verify.joined(separator: " ").lowercased().contains("no such") {
+            return "音频上传后校验失败：\(verify.joined(separator: " "))"
+        }
+
+        busyMessage = "写入语音配置…"
+        let values = await request(
+            method: "setVoiceCustomization",
+            arg: key,
+            extras: [("path", remotePath)]
+        )
+        let snap = LingFansVoicePayload.snapshot(
+            from: values, fallbackMessage: errorMessage ?? "写入语音配置失败"
+        )
+        if snap.success {
+            voiceSnapshot = snap
+            return nil
+        }
+        await loadVoice()
+        return snap.message.isEmpty ? "写入语音配置失败" : snap.message
     }
 
     /// 原版 431 行：arg = key
     func playVoicePreview(key: String) async -> Bool {
         busyMessage = "车机播放预览…"
         defer { busyMessage = nil }
-        let r = await request(method: "playVoicePreviewOnDevice", arg: key, extras: [])
-        return r != nil
+        if isDemo { return true }
+        let values = await request(method: "playVoicePreviewOnDevice", arg: key, extras: [])
+        return values != nil
     }
 
     // MARK: - 协议实现
@@ -662,11 +778,20 @@ final class LinkStore: ObservableObject {
         activationMessage = "ok"
         weatherApiKey = "b2f4c8e19c1d"
         weatherHost = "api.seniverse.com"
-        voiceItems = [
-            "wakeWord": "你好小菱",
-            "ttsVoice": "女声-柔和",
-            "volume": "70",
-        ]
+        voiceSnapshot = LingFansVoiceSnapshot(
+            success: true,
+            voiceBaseDir: "/sdcard/Android/data/com.zzh.launcher50s.alpha/files/voice",
+            items: LingFansVoice.titles.map { entry in
+                LingFansVoiceItem(
+                    key: entry.key,
+                    title: entry.title,
+                    path: entry.key == "gear_d_path"
+                        ? "/sdcard/Android/data/com.zzh.launcher50s.alpha/files/voice/gear_d_path_20260101_101500.mp3"
+                        : ""
+                )
+            },
+            message: "ok"
+        )
         iconSnapshot = LingFansIconSnapshot(
             success: true,
             iconBaseDir: "/sdcard/Android/data/com.zzh.launcher50s.alpha/files/icons",

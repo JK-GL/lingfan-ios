@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import AVFoundation
 
 /// 菱粉联动
 ///
@@ -22,6 +23,13 @@ struct LinkView: View {
     @State private var showIconEditor = false
     @State private var iconTarget: LingFansIconItem?
     @State private var showPackImporter = false
+
+    // 语音定制
+    @State private var showVoicePicker = false
+    @State private var voiceUploadKey: String?
+    @State private var voiceError: String?
+    @State private var voicePlayingKey: String?
+    @State private var audioPlayer: AVAudioPlayer?
 
     var body: some View {
         ZStack {
@@ -117,6 +125,37 @@ struct LinkView: View {
                 }
                 Task {
                     await store.importIconPack(fileURL: tmp)
+                    try? FileManager.default.removeItem(at: tmp)
+                }
+            case .failure:
+                break
+            }
+        }
+        .fileImporter(
+            isPresented: $showVoicePicker,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first, let key = voiceUploadKey else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+                let ext = url.pathExtension.lowercased()
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("voice_\(UUID().uuidString).\(ext)")
+                try? FileManager.default.removeItem(at: tmp)
+                do {
+                    try FileManager.default.copyItem(at: url, to: tmp)
+                } catch {
+                    voiceError = "读取音频失败：\(error.localizedDescription)"
+                    return
+                }
+                Task {
+                    if let err = await store.uploadVoice(key: key, localPath: tmp.path) {
+                        voiceError = err
+                    }
                     try? FileManager.default.removeItem(at: tmp)
                 }
             case .failure:
@@ -283,25 +322,140 @@ struct LinkView: View {
                 sectionTitle("语音定制", icon: "waveform", tint: MDColor.remote)
 
                 if store.voiceItems.isEmpty {
-                    Text("无定制项，或桌面版本不支持")
+                    Text(store.voiceSnapshot.message.isEmpty
+                         ? "无定制项，或桌面版本不支持"
+                         : store.voiceSnapshot.message)
                         .font(.system(size: 13))
                         .foregroundStyle(MDColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(store.voiceItems.sorted(by: { $0.key < $1.key }), id: \.key) { kv in
-                        HStack(alignment: .top, spacing: 8) {
-                            kvRow(kv.key, kv.value)
-                            Button {
-                                Task { _ = await store.resetVoice(key: kv.key) }
-                            } label: {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(MDColor.textTertiary)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    ForEach(store.voiceItems) { item in
+                        voiceRow(item)
                     }
                 }
+
+                if let err = voiceError {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(MDColor.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+        }
+    }
+
+    private func voiceRow(_ item: LingFansVoiceItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(item.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(MDColor.textPrimary)
+                    .lineLimit(1)
+                if item.hasCustom {
+                    Text("自定义")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(MDColor.remote)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(MDColor.remote.opacity(0.12)))
+                }
+                Spacer(minLength: 4)
+
+                if item.hasCustom {
+                    Button {
+                        Task {
+                            let ok = await store.playVoicePreview(key: item.key)
+                            if !ok { voiceError = "车机播放失败" }
+                        }
+                    } label: {
+                        Image(systemName: "speaker.wave.2")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(MDColor.remote)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    Task { await playOnPhone(key: item.key) }
+                } label: {
+                    Image(systemName: voicePlayingKey == item.key
+                          ? "stop.circle.fill" : "play.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(MDColor.brand)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    voiceUploadKey = item.key
+                    voiceError = nil
+                    showVoicePicker = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(MDColor.brand)
+                }
+                .buttonStyle(.plain)
+
+                if item.hasCustom {
+                    Button {
+                        Task { _ = await store.resetVoice(key: item.key) }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(MDColor.danger)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if item.hasCustom {
+                Text(item.path)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(MDColor.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    /// 手机端试听：export → pull → AVAudioPlayer
+    private func playOnPhone(key: String) async {
+        voiceError = nil
+
+        if voicePlayingKey == key {
+            audioPlayer?.stop()
+            audioPlayer = nil
+            voicePlayingKey = nil
+            return
+        }
+
+        audioPlayer?.stop()
+        audioPlayer = nil
+
+        guard let path = await store.pullVoicePreview(key: key) else {
+            voiceError = "取回预览失败（车机可能未导出该语音）"
+            return
+        }
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+            player.prepareToPlay()
+            player.play()
+            audioPlayer = player
+            voicePlayingKey = key
+
+            // 播完自动复位
+            let duration = player.duration
+            try? await Task.sleep(nanoseconds: UInt64(max(duration, 0.5) * 1_000_000_000))
+            if voicePlayingKey == key {
+                voicePlayingKey = nil
+                audioPlayer = nil
+            }
+        } catch {
+            voiceError = "播放失败：\(error.localizedDescription)"
         }
     }
 
