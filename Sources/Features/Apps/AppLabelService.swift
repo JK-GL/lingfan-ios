@@ -86,9 +86,10 @@ final class AppLabelService {
             }
         }
 
-        // 2. 跑服务，逐行解析 JSON（原版 AppManagerHelpers.kt:238）
-        let output = await shell(Self.command)
-        for line in output.components(separatedBy: "\n") {
+        // 2. 跑服务，逐行解析 JSON（严格对齐原版 AppManagerHelpers.kt:209-248）
+        // 使用未切割的标准 shellAsync，捕获完整的 stdout 流
+        let (_, output) = await adb.shellAsync(Self.command)
+        for line in output.components(separatedBy: CharacterSet.newlines) {
             let t = line.trimmingCharacters(in: .whitespaces)
             guard t.hasPrefix("{") else { continue }
             guard let data = t.data(using: .utf8),

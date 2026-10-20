@@ -185,58 +185,63 @@ final class FilesStore: ObservableObject {
     /// lrwxrwxrwx  1 root root           8 2026-10-01 10:00 sdcard -> /storage/self/primary
     private func parseLS(_ lines: [String], parent: String) -> [Entry] {
         var out: [Entry] = []
-        let parentPath = parent.hasSuffix("/") ? String(parent.dropLast()) : parent
+        let parentPath = (parent.hasSuffix("/") && parent != "/") ? String(parent.dropLast()) : parent
 
+        // 兼容 Android Toybox / BusyBox 的各种 ls -al 格式（严格对齐原版 FileManagerScreen.kt:76-96）
+        // 格式 1（标准 8 组）：perms links owner group size date time name
+        // 格式 2（Toybox 7 组）：perms owner group size date time name
         for line in lines {
             let t = line.trimmingCharacters(in: .whitespaces)
             guard !t.isEmpty else { continue }
-            // 跳过 total 汇总行与错误行
-            if t.hasPrefix("total ") { continue }
-            if t.lowercased().contains("permission denied") { continue }
+            if t.hasPrefix("total") || t.lowercased().contains("permission denied") { continue }
 
-            let cols = t.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-            guard cols.count >= 6 else { continue }
+            let parts = t.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard parts.count >= 6 else {
+                // 极其精简的 ls 格式退避（如纯名称或短列）
+                if !t.contains(":") && !t.contains("/") {
+                    let isDir = t.hasSuffix("/")
+                    let clean = isDir ? String(t.dropLast()) : t
+                    if clean != "." && clean != ".." {
+                        let full = parentPath == "/" ? "/\(clean)" : "\(parentPath)/\(clean)"
+                        out.append(Entry(name: clean, path: full, isDir: isDir, size: 0, date: "", perms: ""))
+                    }
+                }
+                continue
+            }
 
-            let perms = cols[0]
+            let perms = parts[0]
             guard let first = perms.first, "dl-cbps".contains(first) else { continue }
-
             let isLink = first == "l"
             let isDir = first == "d" || isLink
 
-            // 智能识别：寻找日期列（形如 YYYY-MM-DD 或 YYYY/MM/DD）
-            var dateIdx = -1
-            for i in 1..<cols.count {
-                if cols[i].contains("-") && cols[i].count >= 8 {
-                    dateIdx = i
+            // 从末尾反向寻找时间列（形如 12:34 或 2026）
+            var timeIdx = -1
+            for idx in 3..<parts.count {
+                if parts[idx].contains(":") || (parts[idx].count == 4 && Int(parts[idx]) != nil) {
+                    timeIdx = idx
                     break
                 }
             }
 
-            var size: Int64 = 0
-            var dateText = ""
             var name = ""
+            var dateText = ""
+            var size: Int64 = 0
 
-            if dateIdx > 0 && dateIdx + 1 < cols.count {
-                // 日期前一列通常是 size
-                size = Int64(cols[dateIdx - 1]) ?? 0
-                dateText = "\(cols[dateIdx]) \(cols[dateIdx + 1])"
-                if dateIdx + 2 < cols.count {
-                    name = cols[(dateIdx + 2)...].joined(separator: " ")
-                }
-            } else if cols.count >= 8 {
-                // 标准 8 列退避
-                size = Int64(cols[4]) ?? 0
-                dateText = "\(cols[5]) \(cols[6])"
-                name = cols[7...].joined(separator: " ")
+            if timeIdx > 1 && timeIdx + 1 < parts.count {
+                dateText = "\(parts[timeIdx - 1]) \(parts[timeIdx])"
+                size = Int64(parts[timeIdx - 2]) ?? 0
+                name = parts[(timeIdx + 1)...].joined(separator: " ")
+            } else if parts.count >= 7 {
+                name = parts[6...].joined(separator: " ")
+                dateText = "\(parts[4]) \(parts[5])"
+                size = Int64(parts[3]) ?? 0
             } else {
-                name = cols.last ?? ""
+                name = parts.last ?? ""
             }
-            guard !name.isEmpty else { continue }
 
-            // 跳过 . 与 ..
-            if name == "." || name == ".." { continue }
+            if name == "." || name == ".." || name.isEmpty { continue }
 
-            // 符号链接：名称形如 "sdcard -> /storage/..."
+            // 符号链接截断：原版 `rawName.substringBefore(" -> ")`
             if isLink, let arrow = name.range(of: " -> ") {
                 name = String(name[name.startIndex..<arrow.lowerBound])
             }
@@ -246,17 +251,12 @@ final class FilesStore: ObservableObject {
                 name: name,
                 path: fullPath,
                 isDir: isDir,
-                sizeBytes: size,
-                permissions: perms,
-                dateText: dateText
+                size: isDir ? 0 : size,
+                date: dateText,
+                perms: perms
             ))
         }
-
-        // 目录在前，同类按名称排序
-        return out.sorted {
-            if $0.isDir != $1.isDir { return $0.isDir }
-            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
+        return out
     }
 
     // MARK: - 下载
