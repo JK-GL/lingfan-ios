@@ -36,6 +36,8 @@ final class AppsStore: ObservableObject {
     @Published private(set) var loading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var busyMessage: String?
+    /// 图标内存缓存（包名 -> UIImage）
+    @Published var appIcons: [String: UIImage] = [:]
     @Published var query: String = ""
     @Published private(set) var lastPulledLocalPath: String?
 
@@ -571,6 +573,21 @@ final class AppsStore: ObservableObject {
             return nil
         }
         return "提取失败：\(result.output.isEmpty ? "无回执" : result.output)"
+    }
+
+    // MARK: - 图标拉取（对齐原版 AppManagerScreen.kt:370）
+
+    func loadIconIfNeeded(for package: String) {
+        if appIcons[package] != nil { return }
+        Task {
+            if let cached = AppLabelService.shared.icon(for: package) {
+                appIcons[package] = cached
+                return
+            }
+            if let img = await AppLabelService.shared.loadIcon(for: package) {
+                appIcons[package] = img
+            }
+        }
     }
 
     // MARK: - 基础

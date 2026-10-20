@@ -139,7 +139,8 @@ final class FilesStore: ObservableObject {
         }
 
         // ls -la 给权限/大小/时间，比 ls -l 多隐藏文件
-        let lines = await shellLines("ls -la '\(target)' 2>&1")
+        let safePath = target.hasSuffix("/") ? target : "\(target)/"
+        let lines = await shellLines("ls -al \"\(safePath)\" 2>&1")
         let parsed = parseLS(lines, parent: target)
 
         if parsed.isEmpty {
@@ -193,21 +194,42 @@ final class FilesStore: ObservableObject {
             if t.lowercased().contains("permission denied") { continue }
 
             let cols = t.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-            guard cols.count >= 7 else { continue }
+            guard cols.count >= 6 else { continue }
 
             let perms = cols[0]
             guard let first = perms.first, "dl-cbps".contains(first) else { continue }
 
             let isLink = first == "l"
-            // 对齐原版 parseRemoteFileLine：符号链接也当作目录。
-            // 它本身是另一个路径的入口，应该能点进去。
             let isDir = first == "d" || isLink
-            let size = Int64(cols[4]) ?? 0
-            let dateText = "\(cols[5]) \(cols[6])"
-            // 名称可能含空格，从第 8 列起全部拼回
-            var name = cols.count > 7
-                ? cols[7...].joined(separator: " ")
-                : ""
+
+            // 智能识别：寻找日期列（形如 YYYY-MM-DD 或 YYYY/MM/DD）
+            var dateIdx = -1
+            for i in 1..<cols.count {
+                if cols[i].contains("-") && cols[i].count >= 8 {
+                    dateIdx = i
+                    break
+                }
+            }
+
+            var size: Int64 = 0
+            var dateText = ""
+            var name = ""
+
+            if dateIdx > 0 && dateIdx + 1 < cols.count {
+                // 日期前一列通常是 size
+                size = Int64(cols[dateIdx - 1]) ?? 0
+                dateText = "\(cols[dateIdx]) \(cols[dateIdx + 1])"
+                if dateIdx + 2 < cols.count {
+                    name = cols[(dateIdx + 2)...].joined(separator: " ")
+                }
+            } else if cols.count >= 8 {
+                // 标准 8 列退避
+                size = Int64(cols[4]) ?? 0
+                dateText = "\(cols[5]) \(cols[6])"
+                name = cols[7...].joined(separator: " ")
+            } else {
+                name = cols.last ?? ""
+            }
             guard !name.isEmpty else { continue }
 
             // 跳过 . 与 ..

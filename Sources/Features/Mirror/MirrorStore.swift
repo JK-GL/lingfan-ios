@@ -92,25 +92,22 @@ final class MirrorStore: ObservableObject {
             return
         }
 
-        // 注意：base64 输出不能带换行，否则解码失败
-        let lines = await shellLines("screencap -p | base64")
-        let b64 = lines.joined()
-        guard !b64.isEmpty else {
-            lastError = "截图无输出，可能未授权 screencap"
-            return
-        }
-        guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else {
-            lastError = "base64 解码失败（输出可能被截断）"
-            return
-        }
-        guard let img = MirrorImage(data: data) else {
-            lastError = "PNG 解码失败"
+        // 彻底消灭 Base64 杂交：严格对齐全 App 统一的同构 pull 通道
+        let remotePath = "/data/local/tmp/mirror_frame.png"
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("mirror_frame.png")
+
+        _ = await shellLines("screencap -p \(remotePath)")
+        let (ok, _) = await adb.pull(remotePath: remotePath, localPath: tmp.path)
+
+        guard ok, let data = try? Data(contentsOf: tmp), let img = MirrorImage(data: data) else {
+            lastError = "拉取画面失败，请确认设备处于亮屏状态"
             return
         }
         frame = img
         frameCount += 1
         lastFrameBytes = data.count
         lastError = nil
+        try? FileManager.default.removeItem(at: tmp)
     }
 
     private func shellLines(_ cmd: String) async -> [String] {

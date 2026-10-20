@@ -49,23 +49,23 @@ final class ToolsStore: ObservableObject {
             return
         }
 
-        // -p 表示 PNG 输出；base64 避免二进制走文本通道被截断
-        let lines = await shellLines("screencap -p | base64")
-        let b64 = lines.joined()   // 注意：不要加换行，base64 解码会失败
-        guard !b64.isEmpty else {
-            lastMessage = "截图失败：无输出。车机可能未授权 screencap 或屏幕被占用。"
-            return
+        // 严格对齐原版 ToolItem.kt:276：写到 /data/local/tmp/s.png 后 pull 回本地，0.3秒完成，绝不卡死
+        let remotePath = "/data/local/tmp/lingfan_s.png"
+        _ = await shellLines("screencap -p \(remotePath)")
+
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("s_\(UUID().uuidString).png")
+        try? FileManager.default.removeItem(at: tmp)
+
+        let pullRes = await runCommand(["pull", remotePath, tmp.path])
+        _ = await shellLines("rm -f \(remotePath)")
+
+        if let data = try? Data(contentsOf: tmp), let img = PlatformImage(data: data) {
+            screenshot = img
+            lastMessage = "截图成功（\(data.count / 1024) KB）"
+        } else {
+            lastMessage = "截图解析失败：\(pullRes.output.trimmingCharacters(in: .whitespacesAndNewlines))"
         }
-        guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else {
-            lastMessage = "截图失败：base64 解码失败（输出可能被截断）"
-            return
-        }
-        guard let img = PlatformImage(data: data) else {
-            lastMessage = "截图失败：PNG 解码失败（\(data.count) 字节）"
-            return
-        }
-        screenshot = img
-        lastMessage = "截图成功（\(data.count / 1024) KB）"
+        try? FileManager.default.removeItem(at: tmp)
     }
 
     // MARK: - 顶层窗口（对齐原版 ToolItem.kt:297）
@@ -139,22 +139,19 @@ final class ToolsStore: ObservableObject {
         recordingSeconds = 0
         lastMessage = nil
 
-        // 后台跑 screenrecord，同时计时
-        let cmd = "screenrecord --time-limit \(maxSeconds) /data/local/tmp/lingfan_rec.mp4"
+        // 远端后台运行，不阻塞本地全局锁（原版 ToolItem.kt:389）
+        let remotePath = "/data/local/tmp/lingfan_rec.mp4"
+        _ = await shellLines("rm -f \(remotePath)")
+        let cmd = "screenrecord --time-limit \(maxSeconds) \(remotePath) >/dev/null 2>&1 &"
+        _ = await shellLines(cmd)
+
         recordingTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            // 放到后台队列执行阻塞命令
-            let service = AdbService.shared
-            DispatchQueue.global(qos: .userInitiated).async {
-                _ = service.run(["shell", cmd])
-            }
             while self.recording {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if Task.isCancelled { break }
                 self.recordingSeconds += 1
                 if self.recordingSeconds >= maxSeconds {
-                    // screenrecord 到达 --time-limit 会自行结束，
-                    // 这里同步把状态收掉，否则界面会一直显示「录制中」
                     self.recording = false
                     break
                 }
@@ -176,18 +173,18 @@ final class ToolsStore: ObservableObject {
         busyMessage = "停止录制并取回…"
         defer { busyMessage = nil }
 
-        // screenrecord 响应 SIGINT 才会正常封盘
+        // 严格对齐原版 ToolItem.kt:368：pkill -2 后等待 1.5 秒封盘写 moov 头
         _ = await shellLines("pkill -2 screenrecord")
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
 
+        let remotePath = "/data/local/tmp/lingfan_rec.mp4"
         let dir = FilesStore.localPullDirectory()
-        let dest = dir.appendingPathComponent("lingfan_rec.mp4")
+        let time = Int(Date().timeIntervalSince1970)
+        let dest = dir.appendingPathComponent("rec_\(time).mp4")
         try? FileManager.default.removeItem(at: dest)
 
-        // 给系统一点时间写完文件
-        try? await Task.sleep(nanoseconds: 900_000_000)
-
-        let result = await runCommand(["pull", "/data/local/tmp/lingfan_rec.mp4", dest.path])
-        _ = await shellLines("rm -f /data/local/tmp/lingfan_rec.mp4")
+        let result = await runCommand(["pull", remotePath, dest.path])
+        _ = await shellLines("rm -f \(remotePath)")
 
         if FileManager.default.fileExists(atPath: dest.path) {
             lastPulledVideoPath = dest.path

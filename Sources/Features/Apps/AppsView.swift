@@ -215,14 +215,27 @@ struct AppsView: View {
     private func appRow(_ app: AppsStore.App) -> some View {
         MDCard(padding: 12) {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(MDColor.app.opacity(0.12))
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Text(String(app.displayName.prefix(1)))
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(MDColor.app)
-                    )
+                Group {
+                    if let icon = store.appIcons[app.package] {
+                        Image(uiImage: icon)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(MDColor.app.opacity(0.12))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Text(String(app.displayName.prefix(1)))
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(MDColor.app)
+                            )
+                            .onAppear {
+                                store.loadIconIfNeeded(for: app.package)
+                            }
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {

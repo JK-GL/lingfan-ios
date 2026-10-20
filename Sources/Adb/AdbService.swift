@@ -97,11 +97,18 @@ final class AdbService: ObservableObject {
                         }
                         return
                     } else {
-                        let message = "端口连通但 shell 通道不可用："
-                            + (probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                               ? "设备无响应" : probeText.trimmingCharacters(in: .whitespacesAndNewlines))
-                        self?.lastError = message
-                        completion(false, message)
+                        let raw = probeText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if raw.lowercased().contains("unauthorized") {
+                            // 尝试 reconnect 刷新握手状态
+                            self?.runAsync(["reconnect"]) { _ in }
+                            let message = "设备网络已连通！请在安卓设备（手机/车机）屏幕上勾选「始终允许」并点击【允许/确定】，然后重新点击连接即可。"
+                            self?.lastError = message
+                            completion(false, message)
+                        } else {
+                            let message = "端口连通但 shell 通道不可用：" + (raw.isEmpty ? "设备无响应" : raw)
+                            self?.lastError = message
+                            completion(false, message)
+                        }
                     }
                 }
                 return
@@ -174,6 +181,37 @@ final class AdbService: ObservableObject {
                 }
             }
             completion(serials)
+        }
+    }
+
+    // MARK: - 统一标准传输契约（严格对齐原版 Adb.kt：全 App 唯一标准协议，杜绝杂交）
+
+    /// 标准文件推送（对齐原版 Adb.push）
+    func push(localPath: String, remotePath: String) async -> (ok: Bool, message: String) {
+        await withCheckedContinuation { (cont: CheckedContinuation<(Bool, String), Never>) in
+            runAsync(["push", localPath, remotePath]) { res in
+                let out = res.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                cont.resume(returning: (res.success, out))
+            }
+        }
+    }
+
+    /// 标准文件拉取（对齐原版 Adb.pull）
+    func pull(remotePath: String, localPath: String) async -> (ok: Bool, message: String) {
+        await withCheckedContinuation { (cont: CheckedContinuation<(Bool, String), Never>) in
+            runAsync(["pull", remotePath, localPath]) { res in
+                let out = res.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                cont.resume(returning: (res.success, out))
+            }
+        }
+    }
+
+    /// 标准 Shell 命令异步执行（对齐原版 Adb.shell）
+    func shellAsync(_ command: String) async -> (ok: Bool, output: String) {
+        await withCheckedContinuation { (cont: CheckedContinuation<(Bool, String), Never>) in
+            runAsync(["shell", command]) { res in
+                cont.resume(returning: (res.success, res.output))
+            }
         }
     }
 
