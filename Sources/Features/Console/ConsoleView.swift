@@ -23,6 +23,26 @@ struct ConsoleView: View {
                     if store.storagePercent >= 0.8 {
                         storageWarningCard
                     }
+
+                    if let err = store.errorMessage {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MDColor.warning)
+                                .padding(.top, 1)
+                            Text(err)
+                                .font(.system(size: 12))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(13)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
+                                .fill(MDColor.warning.opacity(0.09))
+                        )
+                    }
                     deviceHeader
                     monitorCard
                     memoryStorageRow

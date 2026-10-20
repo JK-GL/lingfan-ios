@@ -20,6 +20,8 @@ final class ConsoleStore: ObservableObject {
 
     @Published var memoryPercent: Double = 0
     @Published var memoryDetail: String = "--"
+    /// 读取失败提示（shell 受限或设备不支持时不能静默显示 0）
+    @Published var errorMessage: String?
     @Published var storagePercent: Double = 0
     @Published var storageDetail: String = "--"
 
@@ -135,6 +137,11 @@ final class ConsoleStore: ObservableObject {
 
         await refreshMemory()
         await refreshStorage()
+
+        // 三项都拿不到，说明该 ROM 限制了这些接口
+        if cpuUsage == 0 && memoryPercent == 0 && storagePercent == 0 && errorMessage == nil {
+            errorMessage = "设备未返回任何监控数据，可能限制了 /proc 或 dumpsys 访问。"
+        }
     }
 
     private func appendSample(_ array: inout [Double], _ value: Double) {
@@ -265,6 +272,14 @@ final class ConsoleStore: ObservableObject {
     // MARK: - 设备信息
 
     private func refreshDeviceInfo() async {
+        // 先探一条最基础的命令，确认 shell 通道可用
+        let probe = await shellValue("echo ok")
+        if !probe.contains("ok") {
+            errorMessage = "shell 通道无响应。请确认设备已授权本机调试，且 adbd 处于运行状态。"
+            return
+        }
+        errorMessage = nil
+
         async let brand = shellValue("getprop ro.product.brand")
         async let model = shellValue("getprop ro.product.model")
         async let sn = shellValue("getprop ro.serialno")

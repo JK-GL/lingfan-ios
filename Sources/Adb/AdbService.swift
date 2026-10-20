@@ -18,6 +18,12 @@ final class AdbService: ObservableObject {
     /// 最近一次错误信息
     @Published private(set) var lastError: String?
 
+    /// 当前设备的 adb serial（`adb devices` 第一列）。
+    /// 必须记住它：adb server 同时连着多台设备时，
+    /// 不带 `-s` 的 `adb shell` 会直接返回 "more than one device/emulator"，
+    /// 所有页面都会读不到数据。
+    private(set) var currentSerial: String?
+
     private init() {
         AdbBridge.shared.initializeRuntimeIfNeeded()
     }
@@ -31,8 +37,9 @@ final class AdbService: ObservableObject {
 
     /// 异步执行，回调保证在主线程
     func runAsync(_ args: [String], completion: @escaping (AdbResult) -> Void) {
+        let finalArgs = withDevice(args)
         queue.async {
-            let result = AdbBridge.shared.runCommand(args)
+            let result = AdbBridge.shared.runCommand(finalArgs)
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -42,6 +49,16 @@ final class AdbService: ObservableObject {
         runAsync(args) { result in
             completion(result.output)
         }
+    }
+
+    /// 给需要指定设备的子命令补上 `-s <serial>`。
+    /// connect / disconnect / devices / pair 这些全局命令不能带。
+    func withDevice(_ args: [String]) -> [String] {
+        guard let serial = currentSerial, !serial.isEmpty else { return args }
+        guard let first = args.first else { return args }
+        let global = ["connect", "disconnect", "devices", "pair", "kill-server", "start-server", "version"]
+        if global.contains(first) || args.contains("-s") { return args }
+        return ["-s", serial] + args
     }
 
     // MARK: - 连接管理
@@ -74,7 +91,11 @@ final class AdbService: ObservableObject {
                     if probeOk {
                         self?.connectedEndpoint = endpoint
                         self?.lastError = nil
-                        completion(true, text)
+                        // 记下 serial，后续所有 shell 都带 -s
+                        self?.resolveSerial(for: endpoint) {
+                            completion(true, text)
+                        }
+                        return
                     } else {
                         let message = "端口连通但 shell 通道不可用："
                             + (probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -100,10 +121,33 @@ final class AdbService: ObservableObject {
         }
     }
 
+    /// 从 `adb devices` 里找出该 endpoint 对应的 serial
+    private func resolveSerial(for endpoint: String, completion: @escaping () -> Void) {
+        runAsync(["devices"]) { [weak self] result in
+            var found: String?
+            for line in result.output.split(separator: "\n") {
+                let text = line.trimmingCharacters(in: .whitespaces)
+                guard !text.isEmpty, !text.hasPrefix("List of devices") else { continue }
+                let parts = text.split(whereSeparator: { $0 == "\t" || $0 == " " })
+                guard parts.count >= 2 else { continue }
+                let serial = String(parts[0])
+                // 设备状态必须是 device，offline/unauthorized 不算
+                guard String(parts[1]).hasPrefix("device") else { continue }
+                if serial == endpoint || serial.hasPrefix(endpoint) || endpoint.hasPrefix(serial) {
+                    found = serial
+                    break
+                }
+            }
+            self?.currentSerial = found ?? endpoint
+            completion()
+        }
+    }
+
     func disconnect(_ endpoint: String, completion: ((Bool) -> Void)? = nil) {
         runAsync(["disconnect", endpoint]) { [weak self] result in
             if self?.connectedEndpoint == endpoint {
                 self?.connectedEndpoint = nil
+                self?.currentSerial = nil
             }
             completion?(result.success)
         }
@@ -112,6 +156,7 @@ final class AdbService: ObservableObject {
     func disconnectAll(completion: ((Bool) -> Void)? = nil) {
         runAsync(["disconnect"]) { [weak self] result in
             self?.connectedEndpoint = nil
+            self?.currentSerial = nil
             completion?(result.success)
         }
     }
