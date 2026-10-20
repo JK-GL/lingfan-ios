@@ -108,12 +108,18 @@ final class LinkStore: ObservableObject {
         logExportPath = writeLogExport(result.exportText)
     }
 
-    /// 导出到 Documents/pulled，供分享面板取用
+    /// 导出到 Documents/pulled，供分享面板取用。
+    /// 这里不用 FilesStore.localPullDirectory()：那是主线程隔离的静态方法，
+    /// LinkStore 不在主 actor 上，同步调用会编译失败。
     private func writeLogExport(_ text: String) -> String? {
         let formatter = DateFormatter()
         formatter.dateFormat = "HHmmss"
-        let url = FilesStore.localPullDirectory()
-            .appendingPathComponent("lingfans_log_\(formatter.string(from: Date())).txt")
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("pulled", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let url = dir.appendingPathComponent("lingfans_log_\(formatter.string(from: Date())).txt")
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
             return url.path
