@@ -21,6 +21,10 @@ final class LinkStore: ObservableObject {
     static let extraTypeString = "s"
     /// 联动功能要求的最低桌面版本（原版 LINGFANS_LINK_MIN_VERSION）
     static let minVersion = "3.1.1"
+    /// 原版 EXPIRING_BUILTIN_WEATHER_API_KEY：命中就提示即将失效
+    static let expiringBuiltinKey = "3e1ecaf39ab24b20b4f0b0f39139a9b3"
+    /// 原版 EXPIRING_BUILTIN_WEATHER_API_HOST
+    static let expiringBuiltinHost = "ng4jabbwcx.re.qweatherapi.com"
 
     // MARK: - 状态
 

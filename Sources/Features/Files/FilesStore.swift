@@ -59,6 +59,47 @@ final class FilesStore: ObservableObject {
     /// 已下载到本机的文件，供分享/预览
     @Published private(set) var lastPulledLocalPath: String?
 
+    /// 排序方式（原版 SortOrder）
+    enum SortOrder: String, CaseIterable, Identifiable {
+        case name, type, time, size
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .name: return "按名称"
+            case .type: return "按类型"
+            case .time: return "按时间"
+            case .size: return "按大小"
+            }
+        }
+    }
+
+    @Published var sortOrder: SortOrder = .name
+    @Published var showHidden = false
+
+    /// 界面实际渲染的列表：先过滤隐藏文件，再排序
+    var displayEntries: [Entry] {
+        var list = entries
+        if !showHidden {
+            list = list.filter { !$0.name.hasPrefix(".") }
+        }
+        return list.sorted { a, b in
+            // 目录永远在前
+            if a.isDir != b.isDir { return a.isDir }
+            switch sortOrder {
+            case .name:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .type:
+                let ea = (a.name as NSString).pathExtension.lowercased()
+                let eb = (b.name as NSString).pathExtension.lowercased()
+                return ea < eb
+            case .time:
+                return a.dateText > b.dateText
+            case .size:
+                return a.sizeBytes > b.sizeBytes
+            }
+        }
+    }
+
     /// 剪贴板里待粘贴的条目（原版 clipboardFile）
     @Published private(set) var clipboardEntry: Entry?
     /// 剪贴板是剪切模式还是复制模式（原版 isCutMode）
@@ -401,6 +442,31 @@ final class FilesStore: ObservableObject {
         }
 
         if clipboardIsCut { clearClipboard() }
+        await load()
+        return true
+    }
+
+    /// 新建空文件（原版 createType = "file"）
+    func createFile(named name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("/") else { return false }
+        let target = currentPath.hasSuffix("/")
+            ? "\(currentPath)\(trimmed)"
+            : "\(currentPath)/\(trimmed)"
+
+        if isDemo {
+            entries.insert(Entry(name: trimmed, path: target, isDir: false,
+                                 sizeBytes: 0, permissions: "-rw-rw----",
+                                 dateText: "刚刚"), at: 0)
+            return true
+        }
+
+        let lines = await shellLines("touch '\(target)' 2>&1")
+        let text = lines.joined(separator: " ").lowercased()
+        if text.contains("denied") || text.contains("read-only") || text.contains("no such") {
+            errorMessage = "新建文件失败：\(lines.joined(separator: " "))"
+            return false
+        }
         await load()
         return true
     }

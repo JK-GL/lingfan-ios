@@ -12,6 +12,8 @@ struct FilesView: View {
 
     @State private var showRename = false
     @State private var showCreateFolder = false
+    @State private var createIsFolder = true
+    @State private var detailEntry: FilesStore.Entry?
     @State private var showDeleteConfirm = false
     @State private var target: FilesStore.Entry?
     @State private var nameInput = ""
@@ -34,13 +36,13 @@ struct FilesView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        if store.loading && store.entries.isEmpty {
+                        if store.loading && store.displayEntries.isEmpty {
                             ProgressView("读取目录…")
                                 .padding(.vertical, 80)
-                        } else if store.entries.isEmpty {
+                        } else if store.displayEntries.isEmpty {
                             emptyState
                         } else {
-                            ForEach(store.entries) { entry in
+                            ForEach(store.displayEntries) { entry in
                                 entryRow(entry)
                             }
                         }
@@ -75,9 +77,43 @@ struct FilesView: View {
 
                     Button {
                         nameInput = ""
+                        createIsFolder = true
                         showCreateFolder = true
                     } label: {
                         Label("新建文件夹", systemImage: "folder.badge.plus")
+                    }
+
+                    Button {
+                        nameInput = ""
+                        createIsFolder = false
+                        showCreateFolder = true
+                    } label: {
+                        Label("新建文件", systemImage: "doc.badge.plus")
+                    }
+
+                    Divider()
+
+                    Menu {
+                        ForEach(FilesStore.SortOrder.allCases) { order in
+                            Button {
+                                store.sortOrder = order
+                            } label: {
+                                if store.sortOrder == order {
+                                    Label(order.title, systemImage: "checkmark")
+                                } else {
+                                    Text(order.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("排序：\(store.sortOrder.title)", systemImage: "arrow.up.arrow.down")
+                    }
+
+                    Button {
+                        store.showHidden.toggle()
+                    } label: {
+                        Label(store.showHidden ? "隐藏隐藏文件" : "显示隐藏文件",
+                              systemImage: store.showHidden ? "eye.slash" : "eye")
                     }
                     Button {
                         Task { await store.load(path: "/sdcard") }
@@ -117,12 +153,26 @@ struct FilesView: View {
                 Task { _ = await store.rename(t, to: nameInput) }
             }
         }
-        .alert("新建文件夹", isPresented: $showCreateFolder) {
-            TextField("文件夹名称", text: $nameInput)
+        .alert(createIsFolder ? "新建文件夹" : "新建文件", isPresented: $showCreateFolder) {
+            TextField(createIsFolder ? "文件夹名称" : "文件名（含扩展名）", text: $nameInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
             Button("取消", role: .cancel) {}
             Button("创建") {
-                Task { _ = await store.createFolder(named: nameInput) }
+                Task {
+                    if createIsFolder {
+                        _ = await store.createFolder(named: nameInput)
+                    } else {
+                        _ = await store.createFile(named: nameInput)
+                    }
+                }
             }
+        }
+        .sheet(item: $detailEntry) { entry in
+            FileDetailSheet(entry: entry, isPresented: Binding(
+                get: { detailEntry != nil },
+                set: { if !$0 { detailEntry = nil } }
+            ))
         }
         .alert("确认删除", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}
@@ -164,7 +214,7 @@ struct FilesView: View {
 
             Spacer(minLength: 0)
 
-            Text("\(store.entries.count)")
+            Text("\(store.displayEntries.count)")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(MDColor.textSecondary)
         }
@@ -291,6 +341,12 @@ struct FilesView: View {
                 }
             }
 
+            Button {
+                detailEntry = entry
+            } label: {
+                Label("文件详情", systemImage: "info.circle")
+            }
+
             Button(role: .destructive) {
                 target = entry
                 showDeleteConfirm = true
@@ -319,6 +375,84 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - 文件详情
+
+struct FileDetailSheet: View {
+    let entry: FilesStore.Entry
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MDPageBackground()
+                ScrollView {
+                    MDCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                Image(systemName: entry.iconName)
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(entry.isDir ? MDColor.file : MDColor.textSecondary)
+                                Text(entry.name)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(MDColor.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Divider().background(MDColor.outlineVariant)
+
+                            row("类型", entry.isDir ? "目录" : typeLabel)
+                            row("大小", entry.isDir ? "—" : entry.sizeText)
+                            row("权限", entry.permissions)
+                            row("修改时间", entry.dateText)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("完整路径")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(MDColor.textSecondary)
+                                Text(entry.path)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(MDColor.textPrimary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, MDMetric.pagePadding)
+                    .padding(.top, 12)
+                }
+            }
+            .navigationTitle("文件详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MDColor.background, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { isPresented = false }
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+        }
+    }
+
+    private var typeLabel: String {
+        let ext = (entry.name as NSString).pathExtension
+        return ext.isEmpty ? "文件" : "\(ext.uppercased()) 文件"
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(MDColor.textSecondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(MDColor.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
 }
 
 #Preview {

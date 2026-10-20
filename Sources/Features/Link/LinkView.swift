@@ -302,8 +302,43 @@ struct LinkView: View {
 
                 kvRow("API Key", store.weatherApiKey.isEmpty ? "未配置" : maskKey(store.weatherApiKey))
                 kvRow("Host", store.weatherHost.isEmpty ? "未配置" : store.weatherHost)
+
+                // 原版会提示内置 Key / Host 即将失效
+                if store.weatherApiKey == LinkStore.expiringBuiltinKey {
+                    warningPill("此内置 API Key 即将失效，请尽快更换")
+                }
+                if matchesExpiringHost(store.weatherHost) {
+                    warningPill("此内置 API Host 即将失效，请尽快更换")
+                }
+
+                Link("前往和风天气控制台获取 Key 与 Host",
+                     destination: URL(string: "https://id.qweather.com/#/login?redirect=https%3A%2F%2Fconsole.qweather.com")!)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(MDColor.brand)
             }
         }
+    }
+
+    private func warningPill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(MDColor.danger)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(MDColor.danger.opacity(0.10)))
+    }
+
+    /// 原版 matchesExpiringBuiltinWeatherApiHost：去掉协议和结尾斜杠后比对
+    private func matchesExpiringHost(_ host: String) -> Bool {
+        var t = host.trimmingCharacters(in: .whitespaces)
+        if t.hasSuffix("/") { t.removeLast() }
+        for prefix in ["https://", "http://"] {
+            if t.lowercased().hasPrefix(prefix) {
+                t = String(t.dropFirst(prefix.count))
+                break
+            }
+        }
+        return t.lowercased() == LinkStore.expiringBuiltinHost.lowercased()
     }
 
     /// 遮蔽中间部分，避免整串暴露
