@@ -192,6 +192,23 @@ struct ShellView: View {
     @State private var history: [ShellEntry] = []
     @State private var running = false
 
+    /// 已执行过的命令（用于上下箭头翻历史，原版 commandHistory）
+    @State private var executedCommands: [String] = []
+    @State private var historyIndex = 0
+    /// 快捷指令（原版 ShellShortcut）
+    @State private var shortcuts: [ShellShortcut] = []
+    @State private var showShortcuts = false
+    @State private var showAddShortcut = false
+    @State private var shortcutName = ""
+    @State private var shortcutCmd = ""
+    @State private var wrapsLines = true
+
+    struct ShellShortcut: Identifiable, Hashable {
+        let id = UUID()
+        let name: String
+        let cmd: String
+    }
+
     struct ShellEntry: Identifiable {
         let id = UUID()
         let command: String
@@ -217,6 +234,7 @@ struct ShellView: View {
                                             .font(.system(size: 12, design: .monospaced))
                                             .foregroundStyle(MDColor.textPrimary)
                                             .textSelection(.enabled)
+                                            .lineLimit(wrapsLines ? nil : 1)
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,6 +258,40 @@ struct ShellView: View {
 
                 // 输入栏
                 HStack(spacing: 8) {
+                    // 历史翻页（原版上下箭头）
+                    VStack(spacing: 0) {
+                        Button {
+                            guard !executedCommands.isEmpty else { return }
+                            historyIndex = max(0, historyIndex - 1)
+                            if historyIndex < executedCommands.count {
+                                command = executedCommands[historyIndex]
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .frame(width: 26, height: 20)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            guard !executedCommands.isEmpty else { return }
+                            if historyIndex < executedCommands.count - 1 {
+                                historyIndex += 1
+                                command = executedCommands[historyIndex]
+                            } else {
+                                historyIndex = executedCommands.count
+                                command = ""
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .frame(width: 26, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     TextField("输入 adb shell 命令", text: $command)
                         .font(.system(size: 14, design: .monospaced))
                         .textInputAutocapitalization(.never)
@@ -267,6 +319,128 @@ struct ShellView: View {
         }
         .navigationTitle("Shell执行")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        shortcutCmd = command
+                        shortcutName = ""
+                        showAddShortcut = true
+                    } label: {
+                        Label("新建快捷指令", systemImage: "plus.circle")
+                    }
+
+                    Button {
+                        showShortcuts = true
+                    } label: {
+                        Label("快捷指令（\(shortcuts.count)）", systemImage: "bolt.horizontal")
+                    }
+
+                    Divider()
+
+                    Button {
+                        wrapsLines.toggle()
+                    } label: {
+                        Label(wrapsLines ? "关闭自动换行" : "开启自动换行",
+                              systemImage: "text.alignleft")
+                    }
+
+                    Button {
+                        UIPasteboard.general.string = history
+                            .map { "$ \($0.command)\n\($0.output)" }
+                            .joined(separator: "\n\n")
+                    } label: {
+                        Label("复制所有日志", systemImage: "doc.on.doc")
+                    }
+
+                    Button(role: .destructive) {
+                        history.removeAll()
+                    } label: {
+                        Label("清空输出", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+        }
+        .alert("新建快捷指令", isPresented: $showAddShortcut) {
+            TextField("名称", text: $shortcutName)
+            TextField("命令", text: $shortcutCmd)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("取消", role: .cancel) {}
+            Button("保存") {
+                let n = shortcutName.trimmingCharacters(in: .whitespaces)
+                let c = shortcutCmd.trimmingCharacters(in: .whitespaces)
+                guard !n.isEmpty, !c.isEmpty else { return }
+                shortcuts.append(ShellShortcut(name: n, cmd: c))
+            }
+        }
+        .sheet(isPresented: $showShortcuts) {
+            NavigationStack {
+                ZStack {
+                    MDPageBackground()
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            if shortcuts.isEmpty {
+                                Text("还没有快捷指令")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(MDColor.textSecondary)
+                                    .padding(.top, 40)
+                            } else {
+                                ForEach(shortcuts) { item in
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            command = item.cmd
+                                            showShortcuts = false
+                                            Task { await execute() }
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(item.name)
+                                                    .font(.system(size: 14, weight: .medium))
+                                                    .foregroundStyle(MDColor.textPrimary)
+                                                Text(item.cmd)
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundStyle(MDColor.textSecondary)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.middle)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Button(role: .destructive) {
+                                            shortcuts.removeAll { $0.id == item.id }
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(MDColor.danger)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                            .fill(MDColor.surfaceHigh)
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.horizontal, MDMetric.pagePadding)
+                        .padding(.top, 12)
+                    }
+                }
+                .navigationTitle("快捷指令")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("关闭") { showShortcuts = false }
+                            .foregroundStyle(MDColor.brand)
+                    }
+                }
+            }
+        }
     }
 
     private func execute() async {
@@ -282,6 +456,13 @@ struct ShellView: View {
             }
         }
         history.append(ShellEntry(command: cmd, output: output, success: ok))
+
+        // 记进历史，供上下箭头翻
+        if executedCommands.last != cmd {
+            executedCommands.append(cmd)
+        }
+        historyIndex = executedCommands.count
+
         running = false
     }
 }

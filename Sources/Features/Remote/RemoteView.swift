@@ -16,6 +16,7 @@ struct RemoteView: View {
     @State private var toast: String?
     @State private var sending = false
     @State private var sendingKey: String?
+    @State private var customCode = ""
 
     private let adb = AdbService.shared
 
@@ -36,24 +37,12 @@ struct RemoteView: View {
         var id: String { title }
     }
 
+    /// 按键表逐条对齐原版 RemoteKey.kt 的 RemoteKey 枚举（28 个）
     private let keyGroups: [KeyGroup] = [
         KeyGroup(title: "导航", keys: [
             KeyItem(label: "返回", code: 4, icon: "arrow.uturn.backward"),
             KeyItem(label: "主页", code: 3, icon: "house.fill"),
             KeyItem(label: "菜单", code: 82, icon: "line.3.horizontal"),
-            KeyItem(label: "最近", code: 187, icon: "rectangle.stack.fill"),
-        ]),
-        KeyGroup(title: "音量与电源", keys: [
-            KeyItem(label: "音量+", code: 24, icon: "speaker.plus.fill"),
-            KeyItem(label: "音量-", code: 25, icon: "speaker.minus.fill"),
-            KeyItem(label: "静音", code: 164, icon: "speaker.slash.fill"),
-            KeyItem(label: "电源", code: 26, icon: "power"),
-        ]),
-        KeyGroup(title: "媒体", keys: [
-            KeyItem(label: "播放/暂停", code: 85, icon: "playpause.fill"),
-            KeyItem(label: "上一首", code: 88, icon: "backward.fill"),
-            KeyItem(label: "下一首", code: 87, icon: "forward.fill"),
-            KeyItem(label: "停止", code: 86, icon: "stop.fill"),
         ]),
         KeyGroup(title: "方向", keys: [
             KeyItem(label: "上", code: 19, icon: "chevron.up"),
@@ -61,6 +50,38 @@ struct RemoteView: View {
             KeyItem(label: "左", code: 21, icon: "chevron.left"),
             KeyItem(label: "右", code: 22, icon: "chevron.right"),
             KeyItem(label: "确定", code: 23, icon: "checkmark"),
+        ]),
+        KeyGroup(title: "音量", keys: [
+            KeyItem(label: "音量+", code: 24, icon: "speaker.plus.fill"),
+            KeyItem(label: "音量-", code: 25, icon: "speaker.minus.fill"),
+            KeyItem(label: "静音", code: 164, icon: "speaker.slash.fill"),
+        ]),
+        KeyGroup(title: "媒体", keys: [
+            KeyItem(label: "播放/暂停", code: 85, icon: "playpause.fill"),
+            KeyItem(label: "上一首", code: 88, icon: "backward.fill"),
+            KeyItem(label: "下一首", code: 87, icon: "forward.fill"),
+        ]),
+        KeyGroup(title: "电源", keys: [
+            KeyItem(label: "电源", code: 26, icon: "power"),
+            KeyItem(label: "休眠", code: 223, icon: "moon.fill"),
+            KeyItem(label: "唤醒", code: 224, icon: "sun.max.fill"),
+        ]),
+        KeyGroup(title: "数字", keys: [
+            KeyItem(label: "0", code: 7, icon: "0.square"),
+            KeyItem(label: "1", code: 8, icon: "1.square"),
+            KeyItem(label: "2", code: 9, icon: "2.square"),
+            KeyItem(label: "3", code: 10, icon: "3.square"),
+            KeyItem(label: "4", code: 11, icon: "4.square"),
+            KeyItem(label: "5", code: 12, icon: "5.square"),
+            KeyItem(label: "6", code: 13, icon: "6.square"),
+            KeyItem(label: "7", code: 14, icon: "7.square"),
+            KeyItem(label: "8", code: 15, icon: "8.square"),
+            KeyItem(label: "9", code: 16, icon: "9.square"),
+        ]),
+        KeyGroup(title: "编辑", keys: [
+            KeyItem(label: "退格", code: 67, icon: "delete.left.fill"),
+            KeyItem(label: "回车", code: 66, icon: "return"),
+            KeyItem(label: "空格", code: 62, icon: "space"),
         ]),
     ]
 
@@ -74,6 +95,7 @@ struct RemoteView: View {
                     ForEach(keyGroups) { group in
                         keyCard(title: group.title, keys: group.keys)
                     }
+                    customCodeCard
                 }
                 .padding(.horizontal, MDMetric.pagePadding)
                 .padding(.top, 8)
@@ -88,6 +110,57 @@ struct RemoteView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(MDColor.background, for: .navigationBar)
+    }
+
+    // MARK: - 自定义 KeyCode
+
+    /// 原版「模拟按键」页底部的自定义 KeyCode 输入
+    private var customCodeCard: some View {
+        MDCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "number.square")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(MDColor.remote)
+                    Text("自定义 KeyCode")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(MDColor.textPrimary)
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 10) {
+                    TextField("输入 Key Code（数字）", text: $customCode)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 14, design: .monospaced))
+                        .padding(.horizontal, 12)
+                        .frame(height: 46)
+                        .background(
+                            RoundedRectangle(cornerRadius: MDMetric.radiusField, style: .continuous)
+                                .fill(MDColor.surfaceHigh)
+                        )
+
+                    Button {
+                        guard let code = Int(customCode) else { return }
+                        Task { await sendKey("\(code)", code) }
+                    } label: {
+                        Text("发送")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 72, height: 46)
+                            .background(
+                                RoundedRectangle(cornerRadius: MDMetric.radiusButton, style: .continuous)
+                                    .fill(customCode.isEmpty ? MDColor.brand.opacity(0.35) : MDColor.brand)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(customCode.isEmpty)
+                }
+
+                Text("数字对应 Android KeyEvent 常量，例如 3=主页、4=返回、26=电源")
+                    .font(.system(size: 11))
+                    .foregroundStyle(MDColor.textTertiary)
+            }
+        }
     }
 
     // MARK: - 文字输入
