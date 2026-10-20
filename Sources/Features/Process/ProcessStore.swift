@@ -23,8 +23,14 @@ final class ProcessStore: ObservableObject {
         let isMainProcess: Bool
         /// 物理内存 KB（ps 的 RSS 列）
         let rssKB: Int
+        /// CPU 占用百分比（/proc/stat 两次采样差值）
+        var cpuUsage: Double = 0
 
         var id: Int { pid }
+
+        var cpuText: String {
+            String(format: "CPU %.1f%%", max(cpuUsage, 0))
+        }
 
         /// 进程名冒号后的部分，例如 :remote
         var subProcessSuffix: String {
@@ -53,7 +59,24 @@ final class ProcessStore: ObservableObject {
             return "\(totalRssKB) KB"
         }
         var processCount: Int { processes.count }
+
+        /// 组内 CPU 合计，原版 coerceAtMost(100)
+        var totalCPU: Double {
+            min(processes.reduce(0) { $0 + $1.cpuUsage }, 100)
+        }
+        var totalCPUText: String {
+            String(format: "CPU %.1f%%", max(totalCPU, 0))
+        }
     }
+
+    /// 排序方式（原版 ProcessSortType）
+    enum SortType: String, CaseIterable, Identifiable {
+        case memory, cpu
+        var id: String { rawValue }
+        var title: String { self == .memory ? "内存占用" : "CPU占用" }
+    }
+
+    @Published var sortType: SortType = .memory
 
     @Published private(set) var groups: [Group] = []
     @Published private(set) var loading = false
@@ -282,6 +305,116 @@ final class ProcessStore: ObservableObject {
         groups.removeAll { $0.packageName == group.packageName }
         killedMessage = "已停止 \(group.packageName)"
         return nil
+    }
+
+    // MARK: - CPU 占用（原版 readCpuSnapshot + refreshCpuUsage）
+
+    private var cpuTimer: Task<Void, Never>?
+    private var lastResortAt: Date = .distantPast
+
+    /// 一次采样：`/proc/stat` 总时间 + 每个 pid 的 utime+stime
+    private func readCPUSnapshot(pids: [Int]) async -> (total: Int64, perPID: [Int: Int64]) {
+        guard !pids.isEmpty else { return (0, [:]) }
+
+        let pidArgs = pids.map(String.init).joined(separator: " ")
+        let cmd = "cat /proc/stat; for pid in \(pidArgs); "
+            + "do if [ -r /proc/$pid/stat ]; then printf 'PROC '; cat /proc/$pid/stat; fi; done"
+        let lines = await shellLines(cmd)
+
+        var total: Int64 = 0
+        var perPID: [Int: Int64] = [:]
+
+        for line in lines {
+            if line.hasPrefix("cpu ") {
+                let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+                total = parts.dropFirst().reduce(0) { acc, p in acc + (Int64(p) ?? 0) }
+                continue
+            }
+            guard line.hasPrefix("PROC ") else { continue }
+
+            // comm 里可能有空格和括号，必须从最后一个 ") " 切
+            let stat = String(line.dropFirst(5))
+            guard let r = stat.range(of: ") ", options: .backwards) else { continue }
+
+            let pidText = stat.split(separator: " ").first.map(String.init) ?? ""
+            guard let pid = Int(pidText) else { continue }
+
+            let tail = stat[r.upperBound...].split(separator: " ", omittingEmptySubsequences: true)
+            guard tail.count > 12,
+                  let utime = Int64(tail[11]),
+                  let stime = Int64(tail[12]) else { continue }
+            perPID[pid] = utime + stime
+        }
+        return (total, perPID)
+    }
+
+    /// 采样窗口 250ms，算每个进程的 CPU 占比
+    private func refreshCPUUsage() async {
+        let pids = groups.flatMap { $0.processes.map(\.pid) }
+        guard !pids.isEmpty else { return }
+
+        let first = await readCPUSnapshot(pids: pids)
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        let second = await readCPUSnapshot(pids: pids)
+
+        let totalDelta = second.total - first.total
+        guard totalDelta > 0 else { return }
+
+        var usage: [Int: Double] = [:]
+        for pid in pids {
+            let a = first.perPID[pid] ?? 0
+            let b = second.perPID[pid] ?? a
+            let delta = max(0, b - a)
+            usage[pid] = min(100, Double(delta) / Double(totalDelta) * 100)
+        }
+
+        for gi in groups.indices {
+            for pi in groups[gi].processes.indices {
+                let pid = groups[gi].processes[pi].pid
+                if let u = usage[pid] {
+                    groups[gi].processes[pi].cpuUsage = u
+                }
+            }
+        }
+
+        // CPU 排序时每 2 秒重排一次，避免数字跳动导致列表抖
+        if sortType == .cpu, Date().timeIntervalSince(lastResortAt) >= 2 {
+            lastResortAt = Date()
+            resort()
+        }
+    }
+
+    /// 按当前排序方式重排分组
+    func resort() {
+        groups.sort { a, b in
+            if sortType == .cpu {
+                if a.totalCPU != b.totalCPU { return a.totalCPU > b.totalCPU }
+                if a.totalRssKB != b.totalRssKB { return a.totalRssKB > b.totalRssKB }
+                return a.packageName < b.packageName
+            } else {
+                if a.totalRssKB != b.totalRssKB { return a.totalRssKB > b.totalRssKB }
+                if a.totalCPU != b.totalCPU { return a.totalCPU > b.totalCPU }
+                return a.packageName < b.packageName
+            }
+        }
+    }
+
+    /// 启动 CPU 轮询（1 秒一次）
+    func startCPUMonitor() {
+        stopCPUMonitor()
+        guard !isDemo else { return }
+        cpuTimer = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshCPUUsage()
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    func stopCPUMonitor() {
+        cpuTimer?.cancel()
+        cpuTimer = nil
     }
 
     private func removeLocally(_ pid: Int) {

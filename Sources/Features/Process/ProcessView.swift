@@ -56,7 +56,10 @@ struct ProcessView: View {
         .task {
             store.bind(isDemo: device.isDemo)
             await store.load()
+            store.resort()
+            store.startCPUMonitor()
         }
+        .onDisappear { store.stopCPUMonitor() }
         .alert("停止整个应用", isPresented: $showStopGroupConfirm) {
             Button("取消", role: .cancel) { pendingStopGroup = nil }
             Button("停止", role: .destructive) {
@@ -144,6 +147,32 @@ struct ProcessView: View {
                     }
                 }
                 .frame(height: 8)
+
+                // 排序（原版 ProcessSortType：内存占用 / CPU占用）
+                HStack(spacing: 8) {
+                    ForEach(ProcessStore.SortType.allCases) { type in
+                        Button {
+                            store.sortType = type
+                            store.resort()
+                        } label: {
+                            Text(type.title)
+                                .font(.system(size: 12, weight: store.sortType == type ? .semibold : .regular))
+                                .foregroundStyle(store.sortType == type ? MDColor.process : MDColor.textSecondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule().fill(store.sortType == type
+                                                   ? MDColor.process.opacity(0.12)
+                                                   : MDColor.surfaceHigh)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                    Text(store.sortType == .cpu ? "每秒采样" : "")
+                        .font(.system(size: 10))
+                        .foregroundStyle(MDColor.textTertiary)
+                }
             }
         }
     }
@@ -226,6 +255,12 @@ struct ProcessView: View {
                         Text(group.totalRssText)
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(MDColor.textPrimary)
+
+                        if group.totalCPU > 0 {
+                            Text(group.totalCPUText)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(group.totalCPU > 50 ? MDColor.danger : MDColor.textSecondary)
+                        }
 
                         HStack(spacing: 6) {
                             if let main = group.processes.first(where: { $0.isMainProcess }) {
