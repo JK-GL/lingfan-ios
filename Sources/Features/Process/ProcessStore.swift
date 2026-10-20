@@ -49,6 +49,14 @@ final class ProcessStore: ObservableObject {
     struct Group: Identifiable, Hashable {
         let packageName: String
         var processes: [Proc]
+        /// 车机上的真实应用名，拿不到时为空
+        var label: String = ""
+
+        var displayName: String {
+            if !label.isEmpty { return label }
+            let last = packageName.split(separator: ".").last.map(String.init) ?? packageName
+            return last.prefix(1).uppercased() + last.dropFirst()
+        }
 
         var id: String { packageName }
 
@@ -118,6 +126,9 @@ final class ProcessStore: ObservableObject {
             // 退一步：不带 -o（列不固定，只能尽力解析）
             psOut = await shellLines("ps -A")
         }
+
+        AppLabelService.shared.bind()
+        await AppLabelService.shared.warmupIfNeeded()
 
         let parsed = parsePS(psOut)
         if parsed.isEmpty {
@@ -222,13 +233,15 @@ final class ProcessStore: ObservableObject {
         for p in procs {
             map[p.packageName, default: []].append(p)
         }
+        let service = AppLabelService.shared
         return map.map { pkg, list in
             Group(
                 packageName: pkg,
                 processes: list.sorted {
                     if $0.isMainProcess != $1.isMainProcess { return $0.isMainProcess }
                     return $0.rssKB > $1.rssKB
-                }
+                },
+                label: service.label(for: pkg) ?? ""
             )
         }
         .sorted { $0.totalRssKB > $1.totalRssKB }

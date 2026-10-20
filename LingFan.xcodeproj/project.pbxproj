@@ -7,6 +7,8 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		0B22EC3EBCBE0DDA63795139 /* AppLabelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */; };
+		931D70F78A08B533211328D4 /* server.apk in Resources */ = {isa = PBXBuildFile; fileRef = 22209CC207288880A5FBD55F /* server.apk */; };
 		669CB0B2979D13862BEA285C /* LingFansVoiceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F48EC622DABCC8CC349273 /* LingFansVoiceModels.swift */; };
 		C4416CA339B0BDF51D073628 /* ZipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36B36D59F4B858931F56CBE /* ZipStore.swift */; };
 		22352D00A51711E4804D76AE /* LingFansIconPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */; };
@@ -47,6 +49,8 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLabelService.swift; path = Sources/Features/Apps/AppLabelService.swift; sourceTree = "<group>"; };
+		22209CC207288880A5FBD55F /* server.apk */ = {isa = PBXFileReference; lastKnownFileType = file; path = server.apk; sourceTree = "<group>"; };
 		89F48EC622DABCC8CC349273 /* LingFansVoiceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansVoiceModels.swift; path = Sources/Features/Link/LingFansVoiceModels.swift; sourceTree = "<group>"; };
 		C36B36D59F4B858931F56CBE /* ZipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ZipStore.swift; path = Sources/Shared/ZipStore.swift; sourceTree = "<group>"; };
 		4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansIconPack.swift; path = Sources/Features/Link/LingFansIconPack.swift; sourceTree = "<group>"; };
@@ -103,6 +107,7 @@
 			2B731CEFC6751AAE0EC69B98 = {
 				isa = PBXGroup;
 				children = (
+					22209CC207288880A5FBD55F /* server.apk */,
 					0DB48147E5CB5E763AD6703E /* AdbBridge.h */,
 					34C0D9DF4831A0BF66BBE16F /* AdbBridge.mm */,
 					BFA77AF7359F5D16C3C7BA45 /* AdbService.swift */,
@@ -114,6 +119,7 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */,
 					89F48EC622DABCC8CC349273 /* LingFansVoiceModels.swift */,
 					C36B36D59F4B858931F56CBE /* ZipStore.swift */,
 					4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */,
@@ -211,6 +217,7 @@
 				isa = PBXResourcesBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
+					931D70F78A08B533211328D4 /* server.apk in Resources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 			};
@@ -230,6 +237,7 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					0B22EC3EBCBE0DDA63795139 /* AppLabelService.swift in Sources */,
 					669CB0B2979D13862BEA285C /* LingFansVoiceModels.swift in Sources */,
 					C4416CA339B0BDF51D073628 /* ZipStore.swift in Sources */,
 					22352D00A51711E4804D76AE /* LingFansIconPack.swift in Sources */,

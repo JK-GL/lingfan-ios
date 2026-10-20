@@ -19,11 +19,14 @@ final class AppsStore: ObservableObject {
         let isSystem: Bool
         /// 是否已停用
         let isDisabled: Bool
+        /// 车机上的真实应用名（server.apk 提供），拿不到时为空
+        var label: String = ""
 
         var id: String { package }
 
-        /// 展示名：取包名最后一段并首字母大写，够用且不额外调用
+        /// 展示名：优先真实应用名，退回包名末段
         var displayName: String {
+            if !label.isEmpty { return label }
             let last = package.split(separator: ".").last.map(String.init) ?? package
             return last.prefix(1).uppercased() + last.dropFirst()
         }
@@ -107,7 +110,21 @@ final class AppsStore: ObservableObject {
         if parsed.isEmpty {
             errorMessage = "读不到应用列表。pm 命令可能被 ROM 限制。"
         }
-        apps = parsed.sorted { $0.package < $1.package }
+
+        // 拉真实应用名（原版 warmupAppLabelsIfNeeded）。
+        // 首次会推 server.apk 并跑一遍，之后走磁盘缓存。
+        AppLabelService.shared.bind()
+        await AppLabelService.shared.warmupIfNeeded()
+        let service = AppLabelService.shared
+        parsed = parsed.map { app in
+            var a = app
+            a.label = service.label(for: app.package) ?? ""
+            return a
+        }
+
+        apps = parsed.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
     }
 
     // MARK: - 安装（对齐原版 SingleApkInstallCoordinator + InstallChannelSupport）

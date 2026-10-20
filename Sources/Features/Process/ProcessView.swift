@@ -227,13 +227,13 @@ struct ProcessView: View {
                         .fill(MDColor.process.opacity(0.12))
                         .frame(width: 38, height: 38)
                         .overlay(
-                            Text(String(shortName(group.packageName).prefix(1)).uppercased())
+                            Text(String(group.displayName.prefix(1)).uppercased())
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(MDColor.process)
                         )
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(shortName(group.packageName))
+                        Text(group.displayName)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(MDColor.textPrimary)
                             .lineLimit(1)
