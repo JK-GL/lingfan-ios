@@ -233,33 +233,95 @@ final class AppsStore: ObservableObject {
 
         if isDemo {
             detailText = """
-            Package [\(app.package)]
-              versionName=\(app.isSystem ? "1.0" : "3.2.1")
-              versionCode=\(app.isSystem ? 1 : 3201)
-              firstInstallTime=2026-09-01 10:20:31
-              lastUpdateTime=2026-10-18 22:11:04
-              codePath=\(app.apkPath.isEmpty ? "/data/app/..." : app.apkPath)
-              dataDir=/data/user/0/\(app.package)
-              flags=[ \(app.isSystem ? "SYSTEM" : "HAS_CODE" ) ]
+            版本名      \(app.isSystem ? "1.0" : "3.2.1")
+            APK 大小    12.34 MB
+            minSdk      28
+            targetSdk   33
+            首次安装    2026-09-01 10:20:31
+            最后更新    2026-10-18 22:11:04
+            主 Activity MainActivity
             """
             return
         }
 
-        var out: [String] = []
-        let pathLines = await shellLines("pm path \(app.package) 2>/dev/null")
-        if !pathLines.isEmpty {
-            out.append("== APK 路径 ==")
-            out.append(contentsOf: pathLines)
+        // 原版 fetchDetailsViaAdb：从 dumpsys 里逐字段提取，
+        // 再用 `ls -nl <apkDir>` 累加所有 .apk（含 splits）算总大小。
+        let dumpLines = await shellLines("dumpsys package \(app.package) 2>/dev/null")
+        let dumpsys = dumpLines.joined(separator: "\n")
+
+        guard !dumpsys.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            detailText = "读不到详情（ROM 可能限制了 dumpsys package）"
+            return
         }
 
-        let pkgLines = await shellLines("dumpsys package \(app.package) 2>/dev/null | head -60")
-        if !pkgLines.isEmpty {
-            out.append("")
-            out.append("== 包信息 ==")
-            out.append(contentsOf: pkgLines)
+        let vName = Self.lineAfter(dumpsys, "versionName=")
+        let minSdk = Self.lineAfter(dumpsys, "minSdk=")
+        let targetSdk = Self.lineAfter(dumpsys, "targetSdk=")
+        let firstTime = Self.lineAfter(dumpsys, "firstInstallTime=")
+        let updateTime = Self.lineAfter(dumpsys, "lastUpdateTime=")
+        let mainActivity = Self.firstMatch("\(NSRegularExpression.escapedPattern(for: app.package))/[\\w\\.]+", in: dumpsys)?
+            .split(separator: "/").last.map(String.init) ?? "未知"
+
+        // APK 总大小：APK 路径的父目录下所有 .apk 累加
+        var sizeText = "未知"
+        let apkPath = app.apkPath.isEmpty
+            ? (await shellLines("pm path \(app.package) 2>/dev/null").first?
+                .replacingOccurrences(of: "package:", with: "")
+                .trimmingCharacters(in: .whitespaces) ?? "")
+            : app.apkPath
+
+        if !apkPath.isEmpty {
+            let dir = (apkPath as NSString).deletingLastPathComponent
+            let lsLines = await shellLines("ls -nl \"\(dir)\"")
+            let total = lsLines.filter { $0.contains(".apk") }.reduce(Int64(0)) { acc, line in
+                let nums = line.split(separator: " ").compactMap { Int64($0) }.filter { $0 > 1000 }
+                return acc + (nums.first ?? 0)
+            }
+            if total > 0 {
+                let mb = Double(total) / 1048576
+                sizeText = mb >= 1
+                    ? String(format: "%.2f MB", mb)
+                    : String(format: "%.2f KB", Double(total) / 1024)
+            }
         }
 
-        detailText = out.isEmpty ? "读不到详情（ROM 可能限制了 dumpsys package）" : out.joined(separator: "\n")
+        var out = """
+        版本名      \(vName.isEmpty ? "未知" : vName)
+        APK 大小    \(sizeText)
+        minSdk      \(minSdk.isEmpty ? "-" : minSdk)
+        targetSdk   \(targetSdk.isEmpty ? "-" : targetSdk)
+        首次安装    \(firstTime.isEmpty ? "-" : firstTime)
+        最后更新    \(updateTime.isEmpty ? "-" : updateTime)
+        主 Activity \(mainActivity)
+        """
+
+        if !apkPath.isEmpty {
+            out += "\n\nAPK 路径    \(apkPath)"
+        }
+
+        out += "\n\n== dumpsys 原始输出（前 40 行）==\n"
+        out += dumpLines.prefix(40).joined(separator: "\n")
+
+        detailText = out
+    }
+
+    /// 取 `key` 所在行 `key` 之后的部分（原版 lineAfter）
+    private static func lineAfter(_ text: String, _ key: String) -> String {
+        for line in text.components(separatedBy: "\n") {
+            if let r = line.range(of: key) {
+                return String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return ""
+    }
+
+    private static func firstMatch(_ pattern: String, in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else {
+            return nil
+        }
+        return ns.substring(with: m.range)
     }
 
     // MARK: - 强停 / 清数据（对齐原版）

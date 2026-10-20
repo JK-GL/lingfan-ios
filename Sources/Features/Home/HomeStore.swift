@@ -300,20 +300,31 @@ final class HomeStore: ObservableObject {
         await scan()
     }
 
-    /// 用 adb devices 校验历史设备是否还在线
+    /// 用 adb devices 校验历史设备是否还在线，
+    /// 再补一条 `echo 1` 确认 shell 通道真的可用。
+    /// 原版 AdbConnectionManager.isConnected 就是这么做的 ——
+    /// adb devices 显示 device 但 shell 已经死掉的情况在车机上很常见。
     private func verifyHistory() async {
         guard !devices.isEmpty else { return }
         let serials = await withCheckedContinuation {
             (cont: CheckedContinuation<[String], Never>) in
             adb.listDevices { cont.resume(returning: $0) }
         }
+
+        let shellAlive = await withCheckedContinuation {
+            (cont: CheckedContinuation<Bool, Never>) in
+            adb.runAsync(["shell", "echo 1"]) { r in
+                cont.resume(returning: r.output.contains("1"))
+            }
+        }
+
         for i in devices.indices {
-            let stillOnline = serials.contains { serial in
+            let listed = serials.contains { serial in
                 serial == devices[i].endpoint
                     || devices[i].endpoint.hasSuffix(serial)
                     || serial.contains(devices[i].host)
             }
-            devices[i].state = stillOnline ? .connected : .offline
+            devices[i].state = (listed && shellAlive) ? .connected : .offline
         }
         persistHistory()
     }
