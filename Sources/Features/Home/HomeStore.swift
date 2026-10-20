@@ -104,6 +104,16 @@ final class HomeStore: ObservableObject {
         isConnecting = true
         defer { isConnecting = false }
 
+        let (ok, message) = await connectAndAdopt(endpoint: endpoint)
+        if !ok {
+            errorMessage = message
+        }
+    }
+
+    /// 连接并把设备登记为主设备。手动输入与自动连接共用这一条链路。
+    /// 返回 (是否成功, 失败原因)
+    @discardableResult
+    private func connectAndAdopt(endpoint: String) async -> (Bool, String) {
         let (ok, message) = await withCheckedContinuation {
             (cont: CheckedContinuation<(Bool, String), Never>) in
             adb.connect(to: endpoint) { ok, msg in
@@ -111,23 +121,44 @@ final class HomeStore: ObservableObject {
             }
         }
 
-        if ok {
-            let info = await readIdentity(endpoint: endpoint)
-            upsert(DeviceRecord(
-                id: DeviceRecord.stableID(serial: info.serial, endpoint: endpoint),
-                name: info.name,
-                endpoint: endpoint,
-                state: .connected,
-                isLingFans: info.isLingFans,
-                lastSeen: Date()
-            ))
-            if let warn = info.warning {
-                errorMessage = warn
-            } else {
-                errorMessage = nil
+        guard ok else { return (false, message) }
+
+        let info = await readIdentity(endpoint: endpoint)
+        upsert(DeviceRecord(
+            id: DeviceRecord.stableID(serial: info.serial, endpoint: endpoint),
+            name: info.name,
+            endpoint: endpoint,
+            state: .connected,
+            isLingFans: info.isLingFans,
+            lastSeen: Date()
+        ))
+        errorMessage = info.warning
+        return (true, "")
+    }
+
+    /// 扫描结束后自动连接（原版 enqueueAutoConnectCandidates）。
+    /// 菱粉设备优先，且带 [0, 800ms, 2s] 三次重试；
+    /// 其他设备只试一次。已连上就停。
+    private func autoConnectDiscovered() async {
+        guard !devices.contains(where: { $0.state == .connected }) else { return }
+
+        let candidates = devices
+            .filter { $0.state == .online }
+            .sorted { ($0.isLingFans ? 1 : 0) > ($1.isLingFans ? 1 : 0) }
+        guard !candidates.isEmpty else { return }
+
+        for device in candidates {
+            let delays: [UInt64] = device.isLingFans
+                ? [0, 800_000_000, 2_000_000_000]
+                : [0]
+
+            for delay in delays {
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+                let (ok, _) = await connectAndAdopt(endpoint: device.endpoint)
+                if ok { return }
             }
-        } else {
-            errorMessage = message
         }
     }
 
@@ -292,6 +323,9 @@ final class HomeStore: ObservableObject {
         scanner.stop()
         self.scanner = nil
         persistHistory()
+
+        // 原版行为：扫描到的设备自动尝试连接，不用手动点
+        await autoConnectDiscovered()
     }
 
     /// 刷新：先校验历史设备在线状态，再触发扫描

@@ -68,6 +68,24 @@ final class CleanupStore: ObservableObject {
         }
     }
 
+    /// 存储占用明细（原版 QUICK_SCAN_DIRS）
+    struct UsageItem: Identifiable, Hashable {
+        let title: String
+        let path: String
+        let sizeBytes: Int64
+        /// Android/data 属敏感目录，误删会导致应用异常
+        let isSensitive: Bool
+        var id: String { path }
+
+        var sizeText: String {
+            let b = Double(sizeBytes)
+            if b >= 1073741824 { return String(format: "%.2f GB", b / 1073741824) }
+            if b >= 1048576 { return String(format: "%.1f MB", b / 1048576) }
+            if b >= 1024 { return String(format: "%.0f KB", b / 1024) }
+            return "\(sizeBytes) B"
+        }
+    }
+
     /// 大文件
     struct LargeFile: Identifiable, Hashable {
         let path: String
@@ -92,6 +110,7 @@ final class CleanupStore: ObservableObject {
     @Published private(set) var freedBytes: Int64 = 0
     @Published private(set) var errorMessage: String?
     @Published private(set) var storageSummary = "—"
+    @Published private(set) var usageItems: [UsageItem] = []
 
     var isDemo = false
     private let adb = AdbService.shared
@@ -108,6 +127,23 @@ final class CleanupStore: ObservableObject {
     // MARK: - 常量（对齐原版）
 
     private static let androidDataPath = "/sdcard/Android/data"
+
+    /// 9 个快捷扫描目录（原版 QUICK_SCAN_DIRS）
+    static let quickScanDirs: [(title: String, path: String)] = [
+        ("下载", "/sdcard/Download"),
+        ("图片", "/sdcard/Pictures"),
+        ("视频", "/sdcard/Movies"),
+        ("音乐", "/sdcard/Music"),
+        ("文档", "/sdcard/Documents"),
+        ("相机", "/sdcard/DCIM"),
+        ("Android/data", "/sdcard/Android/data"),
+        ("Android/media", "/sdcard/Android/media"),
+        ("Android/obb", "/sdcard/Android/obb"),
+    ]
+
+    /// 被用户忽略的残留（原版 StorageCleanupExclusionStore）
+    private static let excludedCorpsePathsKey = "cleanup.excludedCorpsePaths"
+    private static let excludedCorpsePackagesKey = "cleanup.excludedCorpsePackages"
     private static let largeFileThresholdKB: Int64 = 200 * 1024   // 200MB
     private static let screenshotsMinAgeDays: Int64 = 7
     private static let corpseRoots: [(String, String)] = [
@@ -140,6 +176,20 @@ final class CleanupStore: ObservableObject {
         await loadStorageSummary()
 
         // 已安装包集合 —— corpse 检测的基础
+        scanStep = "统计各目录占用…"
+        var usage: [UsageItem] = []
+        for item in Self.quickScanDirs {
+            let size = await pathSize(item.path)
+            if size <= 0 { continue }
+            usage.append(UsageItem(
+                title: item.title,
+                path: item.path,
+                sizeBytes: size,
+                isSensitive: item.path == Self.androidDataPath
+            ))
+        }
+        usageItems = usage.sorted { $0.sizeBytes > $1.sizeBytes }
+
         scanStep = "读取已安装应用…"
         let installed = await queryInstalledPackages()
 
@@ -397,6 +447,8 @@ final class CleanupStore: ObservableObject {
     /// corpse 检测：遍历三个根目录，找不在已安装列表里的包名目录
     private func scanCorpses(installed: Set<String>) async -> [Corpse] {
         guard !installed.isEmpty else { return [] }
+        let excludedPaths = Self.excludedCorpsePaths()
+        let excludedPackages = Self.excludedCorpsePackages()
         var out: [Corpse] = []
 
         for (locationType, root) in Self.corpseRoots {
@@ -411,6 +463,9 @@ final class CleanupStore: ObservableObject {
                 let pkg = (p as NSString).lastPathComponent
                 guard isValidPackageName(pkg) else { continue }
                 guard !installed.contains(pkg) else { continue }
+                // 用户手动忽略的不再提示
+                guard !excludedPackages.contains(pkg) else { continue }
+                guard !excludedPaths.contains(p) else { continue }
                 guard seen.insert(p).inserted else { continue }
                 candidates.append(p)
                 if candidates.count >= 200 { break }
@@ -535,6 +590,33 @@ final class CleanupStore: ObservableObject {
         return reclaimed
     }
 
+    // MARK: - 忽略残留（原版 StorageCleanupExclusionStore）
+
+    static func excludedCorpsePaths() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: excludedCorpsePathsKey) ?? [])
+    }
+
+    static func excludedCorpsePackages() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: excludedCorpsePackagesKey) ?? [])
+    }
+
+    /// 把某条残留加入忽略名单，之后扫描不再出现
+    func ignoreCorpse(_ corpse: Corpse) {
+        var paths = Self.excludedCorpsePaths()
+        var packages = Self.excludedCorpsePackages()
+        paths.insert(corpse.path)
+        packages.insert(corpse.packageName)
+        UserDefaults.standard.set(Array(paths), forKey: Self.excludedCorpsePathsKey)
+        UserDefaults.standard.set(Array(packages), forKey: Self.excludedCorpsePackagesKey)
+        corpses.removeAll { $0.path == corpse.path }
+    }
+
+    /// 恢复全部忽略
+    func clearExclusions() {
+        UserDefaults.standard.removeObject(forKey: Self.excludedCorpsePathsKey)
+        UserDefaults.standard.removeObject(forKey: Self.excludedCorpsePackagesKey)
+    }
+
     // MARK: - 基础
 
     private func shellLines(_ cmd: String) async -> [String] {
@@ -547,6 +629,16 @@ final class CleanupStore: ObservableObject {
 
     private func loadDemo() {
         storageSummary = "已用 13.9 GB / 共 32.0 GB"
+        usageItems = [
+            UsageItem(title: "相机", path: "/sdcard/DCIM", sizeBytes: 4200 * 1048576, isSensitive: false),
+            UsageItem(title: "视频", path: "/sdcard/Movies", sizeBytes: 3100 * 1048576, isSensitive: false),
+            UsageItem(title: "Android/data", path: "/sdcard/Android/data", sizeBytes: 2800 * 1048576, isSensitive: true),
+            UsageItem(title: "下载", path: "/sdcard/Download", sizeBytes: 1600 * 1048576, isSensitive: false),
+            UsageItem(title: "Android/obb", path: "/sdcard/Android/obb", sizeBytes: 1204 * 1048576, isSensitive: false),
+            UsageItem(title: "图片", path: "/sdcard/Pictures", sizeBytes: 890 * 1048576, isSensitive: false),
+            UsageItem(title: "音乐", path: "/sdcard/Music", sizeBytes: 320 * 1048576, isSensitive: false),
+            UsageItem(title: "文档", path: "/sdcard/Documents", sizeBytes: 96 * 1048576, isSensitive: false),
+        ]
 
         suggestions = [
             Suggestion(

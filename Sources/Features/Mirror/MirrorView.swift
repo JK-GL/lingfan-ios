@@ -12,6 +12,8 @@ struct MirrorView: View {
     @StateObject private var store = MirrorStore()
 
     @State private var showFullscreen = false
+    /// 画面旋转角度（原版「旋转画面」菜单项）
+    @State private var rotationQuarter = 0
 
     var body: some View {
         ZStack {
@@ -29,6 +31,25 @@ struct MirrorView: View {
         }
         .navigationTitle("设备投屏")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        rotationQuarter = (rotationQuarter + 1) % 4
+                    } label: {
+                        Label("旋转画面", systemImage: "rotate.right")
+                    }
+                    Button {
+                        rotationQuarter = 0
+                    } label: {
+                        Label("重置方向", systemImage: "arrow.counterclockwise")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(MDColor.brand)
+                }
+            }
+        }
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarBackground(MDColor.background, for: .navigationBar)
         .task {
@@ -54,6 +75,7 @@ struct MirrorView: View {
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
+                            .rotationEffect(.degrees(Double(rotationQuarter) * 90))
                     } else {
                         VStack(spacing: 10) {
                             ProgressView()

@@ -33,6 +33,7 @@ struct CleanupView: View {
                     if store.scanning {
                         scanCard
                     } else {
+                        usageSection
                         suggestionSection
                         corpseSection
                         largeFileSection
@@ -152,6 +153,72 @@ struct CleanupView: View {
         )
     }
 
+    // MARK: - 占用明细（原版 QUICK_SCAN_DIRS）
+
+    private var usageSection: some View {
+        Group {
+            if !store.usageItems.isEmpty {
+                MDCard(padding: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chart.bar.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(MDColor.info)
+                            Text("存储占用")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(MDColor.textPrimary)
+                            Spacer(minLength: 0)
+                        }
+
+                        let maxBytes = store.usageItems.first?.sizeBytes ?? 1
+                        ForEach(store.usageItems) { item in
+                            VStack(spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Text(item.title)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(MDColor.textPrimary)
+                                    if item.isSensitive {
+                                        Text("敏感")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundStyle(MDColor.warning)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Capsule().fill(MDColor.warning.opacity(0.12)))
+                                    }
+                                    Spacer(minLength: 4)
+                                    Text(item.sizeText)
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(MDColor.textSecondary)
+                                }
+
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(MDColor.surfaceHigh).frame(height: 5)
+                                        Capsule()
+                                            .fill(item.isSensitive ? MDColor.warning : MDColor.info)
+                                            .frame(
+                                                width: max(2, geo.size.width * CGFloat(Double(item.sizeBytes) / Double(max(maxBytes, 1)))),
+                                                height: 5
+                                            )
+                                    }
+                                }
+                                .frame(height: 5)
+                            }
+                            .padding(.vertical, 2)
+                        }
+
+                        if store.usageItems.contains(where: \.isSensitive) {
+                            Text("Android/data 包含应用缓存和用户数据，误删可能导致应用异常，建议优先检查「应用残留」后再处理。")
+                                .font(.system(size: 10))
+                                .foregroundStyle(MDColor.warning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - 过滤器建议
 
     private var suggestionSection: some View {
@@ -267,6 +334,17 @@ struct CleanupView: View {
                                 Text(c.sizeText)
                                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                                     .foregroundStyle(MDColor.process)
+
+                                // 原版排除项：忽略后不再提示
+                                Button {
+                                    store.ignoreCorpse(c)
+                                    selected.remove(c.path)
+                                } label: {
+                                    Image(systemName: "eye.slash")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(MDColor.textTertiary)
+                                }
+                                .buttonStyle(.plain)
                             }
                             .padding(.vertical, 3)
                         }
