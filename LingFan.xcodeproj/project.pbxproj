@@ -50,7 +50,7 @@
 
 		/* Begin PBXFileReference section */
 		05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLabelService.swift; path = Sources/Features/Apps/AppLabelService.swift; sourceTree = "<group>"; };
-		22209CC207288880A5FBD55F /* server.apk */ = {isa = PBXFileReference; lastKnownFileType = file; path = server.apk; sourceTree = "<group>"; };
+		22209CC207288880A5FBD55F /* server.apk */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/server.apk; sourceTree = "<group>"; };
 		89F48EC622DABCC8CC349273 /* LingFansVoiceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansVoiceModels.swift; path = Sources/Features/Link/LingFansVoiceModels.swift; sourceTree = "<group>"; };
 		C36B36D59F4B858931F56CBE /* ZipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ZipStore.swift; path = Sources/Shared/ZipStore.swift; sourceTree = "<group>"; };
 		4CB216C7D0266D2ED07F9E03 /* LingFansIconPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LingFansIconPack.swift; path = Sources/Features/Link/LingFansIconPack.swift; sourceTree = "<group>"; };
