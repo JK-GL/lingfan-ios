@@ -15,6 +15,7 @@ struct HomeView: View {
     @StateObject private var recent = RecentStore.shared
     @StateObject private var active = ActiveDevice.shared
     @StateObject private var router = TabRouter.shared
+    @StateObject private var keeper = ConnectionKeeper.shared
 
     @State private var path = NavigationPath()
     @State private var showPowerMenu = false
@@ -111,6 +112,10 @@ struct HomeView: View {
     private func syncActive() {
         if let device = connectedDevice {
             active.set(device)
+            // 历史设备被 refresh 判活（没走 connect 流程）时，也要把保活挂上
+            if case .idle = keeper.state {
+                ConnectionKeeper.shared.attach(endpoint: device.endpoint)
+            }
         } else if active.isConnected {
             active.markDisconnected()
         }
@@ -393,12 +398,23 @@ struct HomeView: View {
 
                     Spacer(minLength: 4)
 
-                    Text("已连接")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(MDColor.success)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(MDColor.success.opacity(0.14)))
+                    HStack(spacing: 4) {
+                        if keeper.state.isBroken {
+                            ProgressView()
+                                .scaleEffect(0.55)
+                                .frame(width: 8, height: 8)
+                        } else {
+                            Circle()
+                                .fill(keeperTint)
+                                .frame(width: 5, height: 5)
+                        }
+                        Text(keeper.state.label)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(keeperTint)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(keeperTint.opacity(0.14)))
                 }
 
                 Divider()
@@ -421,6 +437,43 @@ struct HomeView: View {
                         value: String(format: "%.0f%%", metrics.storagePercent * 100),
                         ratio: metrics.storagePercent,
                         tint: MDColor.warning
+                    )
+                }
+
+                if case .offline(let reason) = keeper.state {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(MDColor.danger)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("连接已断开")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(MDColor.danger)
+                            Text(reason)
+                                .font(.system(size: 10))
+                                .foregroundStyle(MDColor.textSecondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 4)
+                        Button {
+                            Task {
+                                _ = await ConnectionKeeper.shared.repairNow()
+                            }
+                        } label: {
+                            Text("重连")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(MDColor.brand)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Capsule().fill(MDColor.brand.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: MDMetric.radiusBanner, style: .continuous)
+                            .fill(MDColor.danger.opacity(0.07))
                     )
                 }
 
@@ -466,6 +519,15 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    private var keeperTint: Color {
+        switch keeper.state {
+        case .online: return MDColor.success
+        case .reconnecting: return MDColor.warning
+        case .offline: return MDColor.danger
+        case .idle: return MDColor.textSecondary
         }
     }
 

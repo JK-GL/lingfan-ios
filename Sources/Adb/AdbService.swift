@@ -93,6 +93,8 @@ final class AdbService: ObservableObject {
                         self?.lastError = nil
                         // 记下 serial，后续所有 shell 都带 -s
                         self?.resolveSerial(for: endpoint) {
+                            // 挂上保活：从这里开始每 20 秒一次心跳
+                            ConnectionKeeper.shared.attach(endpoint: endpoint)
                             completion(true, text)
                         }
                         return
@@ -155,6 +157,7 @@ final class AdbService: ObservableObject {
             if self?.connectedEndpoint == endpoint {
                 self?.connectedEndpoint = nil
                 self?.currentSerial = nil
+                ConnectionKeeper.shared.detach()
             }
             completion?(result.success)
         }
@@ -164,6 +167,7 @@ final class AdbService: ObservableObject {
         runAsync(["disconnect"]) { [weak self] result in
             self?.connectedEndpoint = nil
             self?.currentSerial = nil
+            ConnectionKeeper.shared.detach()
             completion?(result.success)
         }
     }
@@ -208,6 +212,19 @@ final class AdbService: ObservableObject {
 
     /// 标准 Shell 命令异步执行（对齐原版 Adb.shell）
     func shellAsync(_ command: String) async -> (ok: Bool, output: String) {
+        let first = await rawShell(command)
+        if first.ok { return first }
+
+        // 失败一次：先让 keeper 立刻修一次链路，修好了原样重试。
+        // 这一步是「断线自愈」的兜底 —— 心跳 20 秒一轮，等不及心跳的场景靠它。
+        if await ConnectionKeeper.shared.repairNow() {
+            return await rawShell(command)
+        }
+        return first
+    }
+
+    /// 不做任何重试的原始 shell
+    private func rawShell(_ command: String) async -> (ok: Bool, output: String) {
         await withCheckedContinuation { (cont: CheckedContinuation<(Bool, String), Never>) in
             runAsync(["shell", command]) { res in
                 cont.resume(returning: (res.success, res.output))

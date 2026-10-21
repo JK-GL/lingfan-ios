@@ -10,6 +10,7 @@ struct RootTabView: View {
 
     @StateObject private var router = TabRouter.shared
     @StateObject private var active = ActiveDevice.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -47,6 +48,18 @@ struct RootTabView: View {
                 .tag(TabRouter.Tab.settings.rawValue)
         }
         .tint(MDColor.brand)
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .background:
+                // 进后台停心跳，别让一堆超时调用堆在挂起前
+                ConnectionKeeper.shared.suspend()
+            case .active:
+                // 回前台 adb server 可能已被系统回收，整条链路重建
+                Task { await ConnectionKeeper.shared.resume() }
+            default:
+                break
+            }
+        }
     }
 
     /// 需要设备才能用的 Tab：没连设备时给出提示，而不是白屏

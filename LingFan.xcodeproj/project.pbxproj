@@ -7,6 +7,7 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		036B30F9291C810EFBEB139F /* ConnectionKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE67C5A0927730105CD1260 /* ConnectionKeeper.swift */; };
 		ECC2BD84A2D6360AC110988D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061352EAEFAC7494C761EBA9 /* SettingsView.swift */; };
 		EF7BCEB60E059FE1E30D8051 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B92C4D1209D3A09C9232D /* CommandsView.swift */; };
 		A6136106FAC9DAEF99963AD5 /* RecentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */; };
@@ -55,6 +56,7 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		3DE67C5A0927730105CD1260 /* ConnectionKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConnectionKeeper.swift; path = Sources/Adb/ConnectionKeeper.swift; sourceTree = "<group>"; };
 		061352EAEFAC7494C761EBA9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Sources/Features/Settings/SettingsView.swift; sourceTree = "<group>"; };
 		2A3B92C4D1209D3A09C9232D /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CommandsView.swift; path = Sources/Features/Commands/CommandsView.swift; sourceTree = "<group>"; };
 		5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecentStore.swift; path = Sources/Features/Home/RecentStore.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					3DE67C5A0927730105CD1260 /* ConnectionKeeper.swift */,
 					061352EAEFAC7494C761EBA9 /* SettingsView.swift */,
 					2A3B92C4D1209D3A09C9232D /* CommandsView.swift */,
 					5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */,
@@ -255,6 +258,7 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					036B30F9291C810EFBEB139F /* ConnectionKeeper.swift in Sources */,
 					ECC2BD84A2D6360AC110988D /* SettingsView.swift in Sources */,
 					EF7BCEB60E059FE1E30D8051 /* CommandsView.swift in Sources */,
 					A6136106FAC9DAEF99963AD5 /* RecentStore.swift in Sources */,
