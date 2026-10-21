@@ -71,7 +71,6 @@ struct RecentItem: Identifiable, Codable, Equatable {
 }
 
 /// 最近动态存储（UserDefaults 持久化，最多 30 条）
-@MainActor
 final class RecentStore: ObservableObject {
 
     static let shared = RecentStore()
@@ -87,6 +86,10 @@ final class RecentStore: ObservableObject {
 
     /// 记一条。同一标题 30 秒内重复出现时只更新最后一条，避免刷屏。
     func record(_ kind: RecentItem.Kind, title: String, detail: String = "") {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.record(kind, title: title, detail: detail) }
+            return
+        }
         if let last = items.first,
            last.kind == kind,
            last.title == title,
@@ -104,6 +107,10 @@ final class RecentStore: ObservableObject {
     }
 
     func clear() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.clear() }
+            return
+        }
         items.removeAll()
         save()
     }

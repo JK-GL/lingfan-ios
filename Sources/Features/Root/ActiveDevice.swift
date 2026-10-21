@@ -8,7 +8,6 @@ import Foundation
 /// 可以顺着往下传参，所以把「当前设备」提到全局。
 ///
 /// 写入时机只有一个：`HomeStore.tapDevice` 连接成功后由 `HomeView` 写入。
-@MainActor
 final class ActiveDevice: ObservableObject {
 
     static let shared = ActiveDevice()
@@ -27,15 +26,26 @@ final class ActiveDevice: ObservableObject {
     var isConnected: Bool { connected != nil }
 
     func set(_ device: DeviceRecord?) {
-        current = device
+        runOnMain { self.current = device }
     }
 
     /// 断开时不清空记录，只把状态改成 offline ——
     /// 保留是为了让「应用/文件」页在重新连接前仍记得上次连的是谁。
     func markDisconnected() {
-        guard var device = current else { return }
-        device.state = .offline
-        current = device
+        runOnMain {
+            guard var device = self.current else { return }
+            device.state = .offline
+            self.current = device
+        }
+    }
+
+    /// 所有写入都拽到主线程，避免后台 Task 直接改 @Published
+    private func runOnMain(_ block: @escaping () -> Void) {
+        if Thread.isMainThread {
+            block()
+        } else {
+            DispatchQueue.main.async(execute: block)
+        }
     }
 }
 
@@ -43,7 +53,6 @@ final class ActiveDevice: ObservableObject {
 ///
 /// 首页快捷操作里「安装应用 / 文件 / Shell」这三类是切 Tab，
 /// 其余是 push 全屏页。用一个共享对象驱动 `TabView(selection:)`。
-@MainActor
 final class TabRouter: ObservableObject {
 
     static let shared = TabRouter()
@@ -61,6 +70,11 @@ final class TabRouter: ObservableObject {
     }
 
     func go(_ tab: Tab) {
-        self.tab = tab.rawValue
+        let value = tab.rawValue
+        if Thread.isMainThread {
+            self.tab = value
+        } else {
+            DispatchQueue.main.async { self.tab = value }
+        }
     }
 }
