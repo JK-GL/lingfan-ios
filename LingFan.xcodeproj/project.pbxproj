@@ -7,6 +7,11 @@
 	objects = {
 
 		/* Begin PBXBuildFile section */
+		ECC2BD84A2D6360AC110988D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061352EAEFAC7494C761EBA9 /* SettingsView.swift */; };
+		EF7BCEB60E059FE1E30D8051 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B92C4D1209D3A09C9232D /* CommandsView.swift */; };
+		A6136106FAC9DAEF99963AD5 /* RecentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */; };
+		3E8D567C2FF02FB457CB97F9 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB3690683E516627CE5E8E8B /* RootTabView.swift */; };
+		8B3DC8EE5D92D915DF78E741 /* ActiveDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03645567EA5FDA6AFC0C18DB /* ActiveDevice.swift */; };
 		51FA6A6670D002CEC785F92C /* AdbSyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34383F3608C45E9F05A5335B /* AdbSyncClient.swift */; };
 		0B22EC3EBCBE0DDA63795139 /* AppLabelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */; };
 		931D70F78A08B533211328D4 /* server.apk in Resources */ = {isa = PBXBuildFile; fileRef = 22209CC207288880A5FBD55F /* server.apk */; };
@@ -50,6 +55,11 @@
 		/* End PBXBuildFile section */
 
 		/* Begin PBXFileReference section */
+		061352EAEFAC7494C761EBA9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Sources/Features/Settings/SettingsView.swift; sourceTree = "<group>"; };
+		2A3B92C4D1209D3A09C9232D /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CommandsView.swift; path = Sources/Features/Commands/CommandsView.swift; sourceTree = "<group>"; };
+		5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecentStore.swift; path = Sources/Features/Home/RecentStore.swift; sourceTree = "<group>"; };
+		FB3690683E516627CE5E8E8B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootTabView.swift; path = Sources/Features/Root/RootTabView.swift; sourceTree = "<group>"; };
+		03645567EA5FDA6AFC0C18DB /* ActiveDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveDevice.swift; path = Sources/Features/Root/ActiveDevice.swift; sourceTree = "<group>"; };
 		34383F3608C45E9F05A5335B /* AdbSyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdbSyncClient.swift; path = Sources/Adb/AdbSyncClient.swift; sourceTree = "<group>"; };
 		05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppLabelService.swift; path = Sources/Features/Apps/AppLabelService.swift; sourceTree = "<group>"; };
 		22209CC207288880A5FBD55F /* server.apk */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/server.apk; sourceTree = "<group>"; };
@@ -121,6 +131,11 @@
 					14F2C6A3917BE0EA85A9BD6B /* ConsoleView.swift */,
 					EE604C386D80D212077D38B4 /* HomeStore.swift */,
 					785CE226E5716EF40F6F1D36 /* HomeView.swift */,
+					061352EAEFAC7494C761EBA9 /* SettingsView.swift */,
+					2A3B92C4D1209D3A09C9232D /* CommandsView.swift */,
+					5DF41660EA6CAC0CBB116FA1 /* RecentStore.swift */,
+					FB3690683E516627CE5E8E8B /* RootTabView.swift */,
+					03645567EA5FDA6AFC0C18DB /* ActiveDevice.swift */,
 					34383F3608C45E9F05A5335B /* AdbSyncClient.swift */,
 					05A4C98EB6ACDAE5F5DB73DA /* AppLabelService.swift */,
 					89F48EC622DABCC8CC349273 /* LingFansVoiceModels.swift */,
@@ -240,6 +255,11 @@
 					AE434EC3AA441D00178C9A52 /* ConsoleView.swift in Sources */,
 					CE111EECD3E944A03AE88ECB /* HomeStore.swift in Sources */,
 					643A716EA36A3D01B4521462 /* HomeView.swift in Sources */,
+					ECC2BD84A2D6360AC110988D /* SettingsView.swift in Sources */,
+					EF7BCEB60E059FE1E30D8051 /* CommandsView.swift in Sources */,
+					A6136106FAC9DAEF99963AD5 /* RecentStore.swift in Sources */,
+					3E8D567C2FF02FB457CB97F9 /* RootTabView.swift in Sources */,
+					8B3DC8EE5D92D915DF78E741 /* ActiveDevice.swift in Sources */,
 					51FA6A6670D002CEC785F92C /* AdbSyncClient.swift in Sources */,
 					0B22EC3EBCBE0DDA63795139 /* AppLabelService.swift in Sources */,
 					669CB0B2979D13862BEA285C /* LingFansVoiceModels.swift in Sources */,

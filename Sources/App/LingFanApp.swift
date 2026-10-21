@@ -45,7 +45,7 @@ struct LingFanApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            RootTabView()
             // 不再固定浅色：跟随系统深浅色
         }
     }
